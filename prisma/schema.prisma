@@ -1,0 +1,258 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                   Int                @id @default(autoincrement())
+  email                String             @unique
+  password             String
+  resetToken           String?
+  resetTokenExpiresAt  DateTime?
+  refreshToken         String?            @map("refresh_token")
+  role                 String?
+  status               String?
+  createdAt            DateTime?          @map("created_at")
+
+  profile              UserProfile?
+  clothingItems        ClothingItem[]
+  outfits              Outfit[]
+  outfitPlans          OutfitPlan[]
+  outfitHistories      OutfitHistory[]
+  posts                Post[]
+  comments             Comment[]
+  likes                Like[]
+  following            Follow[]           @relation("UserFollowing")
+  followers            Follow[]           @relation("UserFollowers")
+  notifications        Notification[]     @relation("NotificationUser")
+  notificationsCreated Notification[]     @relation("NotificationActor")
+  payments             Payment[]
+
+  @@map("users")
+}
+
+model UserProfile {
+  id           Int      @id @default(autoincrement())
+  userId       Int      @unique @map("user_id")
+  fullName     String?  @map("full_name")
+  avatar       String?
+  preferences  String?
+  isPremium    Boolean? @map("is_premium")
+  gender       String?
+  birthday     DateTime?
+  location     String?
+  updatedAt    DateTime? @map("updated_at")
+
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@map("user_profiles")
+}
+
+model Category {
+  id          Int             @id @default(autoincrement())
+  name        String?
+  description String?
+  icon        String?
+  createdAt   DateTime?       @map("created_at")
+
+  clothingItems ClothingItem[]
+
+  @@map("categories")
+}
+
+model Tag {
+  id        Int                 @id @default(autoincrement())
+  name      String?
+  type      String?
+  createdAt DateTime?           @map("created_at")
+
+  clothingItemTags ClothingItemTag[]
+
+  @@map("tags")
+}
+
+model ClothingItem {
+  id          Int                @id @default(autoincrement())
+  userId      Int                @map("user_id")
+  categoryId  Int?               @map("category_id")
+  name        String?
+  color       String?
+  image       String?
+  isDefault   Boolean?           @map("is_default")
+  isFavorite  Boolean?           @map("is_favorite")
+  description String?
+  season      String?
+  material    String?
+  createdAt   DateTime?          @map("created_at")
+  updatedAt   DateTime?          @map("updated_at")
+
+  user        User               @relation(fields: [userId], references: [id])
+  category    Category?          @relation(fields: [categoryId], references: [id])
+  tags        ClothingItemTag[]
+  outfitItems OutfitItem[]
+
+  @@map("clothing_items")
+}
+
+model ClothingItemTag {
+  clothingItemId Int @map("clothing_item_id")
+  tagId          Int @map("tag_id")
+
+  clothingItem   ClothingItem @relation(fields: [clothingItemId], references: [id])
+  tag            Tag          @relation(fields: [tagId], references: [id])
+
+  @@unique([clothingItemId, tagId])
+  @@map("clothing_item_tags")
+}
+
+model Outfit {
+  id         Int           @id @default(autoincrement())
+  userId     Int           @map("user_id")
+  name       String?
+  occasion   String?
+  weather    String?
+  isFavorite Boolean?      @map("is_favorite")
+  createdAt  DateTime?     @map("created_at")
+
+  user        User         @relation(fields: [userId], references: [id])
+  items       OutfitItem[]
+  plans       OutfitPlan[]
+  histories   OutfitHistory[]
+
+  @@map("outfits")
+}
+
+model OutfitItem {
+  outfitId       Int @map("outfit_id")
+  clothingItemId Int @map("clothing_item_id")
+
+  outfit         Outfit       @relation(fields: [outfitId], references: [id])
+  clothingItem   ClothingItem @relation(fields: [clothingItemId], references: [id])
+
+  @@unique([outfitId, clothingItemId])
+  @@map("outfit_items")
+}
+
+model OutfitPlan {
+  id         Int       @id @default(autoincrement())
+  userId     Int?      @map("user_id")
+  outfitId   Int?      @map("outfit_id")
+  planDate   DateTime? @map("plan_date")
+  planType   String?   @map("plan_type")
+  reminderSent Boolean? @map("reminder_sent")
+  createdAt  DateTime? @map("created_at")
+
+  user       User?     @relation(fields: [userId], references: [id])
+  outfit     Outfit?   @relation(fields: [outfitId], references: [id])
+
+  @@map("outfit_plans")
+}
+
+model OutfitHistory {
+  id        Int       @id @default(autoincrement())
+  userId    Int?      @map("user_id")
+  outfitId  Int?      @map("outfit_id")
+  wornDate  DateTime? @map("worn_date")
+  note      String?
+  createdAt DateTime? @map("created_at")
+
+  user      User?     @relation(fields: [userId], references: [id])
+  outfit    Outfit?   @relation(fields: [outfitId], references: [id])
+
+  @@map("outfit_histories")
+}
+
+model Post {
+  id        Int       @id @default(autoincrement())
+  userId    Int?      @map("user_id")
+  image     String?
+  caption   String?
+  status    String?
+  createdAt DateTime? @map("created_at")
+  updatedAt DateTime? @map("updated_at")
+
+  user      User?     @relation(fields: [userId], references: [id])
+  comments  Comment[]
+  likes     Like[]
+
+  @@map("posts")
+}
+
+model Comment {
+  id        Int       @id @default(autoincrement())
+  postId    Int?      @map("post_id")
+  userId    Int?      @map("user_id")
+  content   String?
+  createdAt DateTime? @map("created_at")
+  updatedAt DateTime? @map("updated_at")
+
+  post      Post?     @relation(fields: [postId], references: [id])
+  user      User?     @relation(fields: [userId], references: [id])
+
+  @@map("comments")
+}
+
+model Like {
+  id        Int       @id @default(autoincrement())
+  postId    Int?      @map("post_id")
+  userId    Int?      @map("user_id")
+  isActive  Boolean?  @map("is_active")
+  createdAt DateTime? @map("created_at")
+
+  post      Post?     @relation(fields: [postId], references: [id])
+  user      User?     @relation(fields: [userId], references: [id])
+
+  @@unique([postId, userId])
+  @@map("likes")
+}
+
+model Follow {
+  followerId Int      @map("follower_id")
+  followingId Int     @map("following_id")
+  createdAt  DateTime? @map("created_at")
+
+  follower   User     @relation("UserFollowing", fields: [followerId], references: [id])
+  following  User     @relation("UserFollowers", fields: [followingId], references: [id])
+
+  @@unique([followerId, followingId])
+  @@map("follows")
+}
+
+model Notification {
+  id            Int      @id @default(autoincrement())
+  userId        Int?     @map("user_id")
+  actorId       Int?     @map("actor_id")
+  type          String?
+  content       String?
+  referenceId   Int?     @map("reference_id")
+  referenceType String?  @map("reference_type")
+  isRead        Boolean? @map("is_read")
+  createdAt     DateTime? @map("created_at")
+
+  user          User?    @relation("NotificationUser", fields: [userId], references: [id])
+  actor         User?    @relation("NotificationActor", fields: [actorId], references: [id])
+
+  @@map("notifications")
+}
+
+model Payment {
+  id            Int       @id @default(autoincrement())
+  userId        Int       @map("user_id")
+  amount        Decimal? 
+  currency      String?
+  paymentMethod String?   @map("payment_method")
+  transactionId String?   @map("transaction_id")
+  status        String?
+  paidAt        DateTime? @map("paid_at")
+  premiumStart  DateTime? @map("premium_start")
+  premiumEnd    DateTime? @map("premium_end")
+  createdAt     DateTime? @map("created_at")
+
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@map("payments")
+}
