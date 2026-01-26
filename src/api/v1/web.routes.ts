@@ -1,8 +1,9 @@
-import { Router } from "express"
-import authRoutes from "@modules/auth/auth.route"
-import userRoutes from "@modules/user/user.route"
+import { Router } from "express";
+import authRoutes from "@modules/auth/auth.route";
+import userRoutes from "@modules/user/user.route";
+import clothingRoutes from "@modules/clothing/clothing.route";
 
-const router = Router()
+const router = Router();
 
 router.post("/auth/register", (_req, res) => {
   res.status(404).json({
@@ -10,11 +11,12 @@ router.post("/auth/register", (_req, res) => {
     message: "Resource not found",
     statusCode: 404,
     timestamp: new Date().toISOString(),
-  })
-})
+  });
+});
 
 // Mount routes
-router.use("/auth", authRoutes)
-router.use("/users", userRoutes)
+router.use("/auth", authRoutes);
+router.use("/users", userRoutes);
+router.use("/clothing", clothingRoutes);
 
-export default router
+export default router;

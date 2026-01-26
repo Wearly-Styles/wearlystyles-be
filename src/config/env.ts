@@ -1,44 +1,49 @@
-import dotenv from "dotenv"
+import dotenv from "dotenv";
 
-dotenv.config()
+dotenv.config();
 
 interface IConfig {
-  node_env: string
-  port: number
-  app_name: string
-  database_url: string
+  node_env: string;
+  port: number;
+  app_name: string;
+  database_url: string;
   database: {
-    host: string
-    port: number
-    username: string
-    password: string
-    database: string
-    synchronize: boolean
-    logging: boolean
-  }
+    host: string;
+    port: number;
+    username: string;
+    password: string;
+    database: string;
+    synchronize: boolean;
+    logging: boolean;
+  };
   jwt: {
-    secret: string
-    expiresIn: string
-    refreshSecret: string
-    refreshExpiresIn: string
-  }
+    secret: string;
+    expiresIn: string;
+    refreshSecret: string;
+    refreshExpiresIn: string;
+  };
   log: {
-    level: string
-  }
+    level: string;
+  };
   email: {
-    smtpHost: string
-    smtpPort: number
-    user: string
-    pass: string
-    fromEmail: string
-  }
+    smtpHost: string;
+    smtpPort: number;
+    user: string;
+    pass: string;
+    fromEmail: string;
+  };
   redis: {
-    url: string
-  }
+    url: string;
+  };
   swagger: {
-    enabled: boolean
-    apiVersion: string
-  }
+    enabled: boolean;
+    apiVersion: string;
+  };
+  cloudinary: {
+    cloudName: string;
+    apiKey: string;
+    apiSecret: string;
+  };
 }
 
 const config: IConfig = {
@@ -84,6 +89,12 @@ const config: IConfig = {
     enabled: process.env.SWAGGER_ENABLED === "true",
     apiVersion: process.env.API_VERSION || "v1",
   },
-}
 
-export default config
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME || "",
+    apiKey: process.env.CLOUDINARY_API_KEY || "",
+    apiSecret: process.env.CLOUDINARY_API_SECRET || "",
+  },
+};
+
+export default config;
