@@ -1,37 +1,40 @@
-import express, { type Application } from "express"
-import cors from "cors"
-import helmet from "helmet"
-import morgan from "morgan"
-import swaggerUi from "swagger-ui-express"
-import { swaggerSpec } from "@config/swagger"
-import { errorMiddleware } from "@middleware/error.middleware"
-import { requestIdMiddleware } from "@middleware/request-id.middleware"
-import { globalRateLimiter } from "@middleware/rate-limit.middleware"
-import apiRoutes from "@api/index"
-import logger from "@config/logger"
-import config from "@config/env"
+import express, { type Application } from "express";
+import cors from "cors";
+import helmet from "helmet";
+import morgan from "morgan";
+import swaggerUi from "swagger-ui-express";
+import { swaggerSpec } from "@config/swagger";
+import { errorMiddleware } from "@middleware/error.middleware";
+import { requestIdMiddleware } from "@middleware/request-id.middleware";
+import { globalRateLimiter } from "@middleware/rate-limit.middleware";
+import apiRoutes from "@api/index";
+import logger from "@config/logger";
+import config from "@config/env";
 
 export const createApp = (): Application => {
-  const app = express()
+  const app = express();
 
   // Security Middleware
-  app.use(helmet())
-  app.use(cors())
+  app.use(helmet());
+  app.use(cors());
 
   // Body Parser Middleware
-  app.use(express.json())
-  app.use(express.urlencoded({ extended: true }))
+  app.use(express.json());
+  app.use(express.urlencoded({ extended: true }));
+
+  // Static files
+  app.use("/uploads", express.static("uploads"));
 
   // Logger Middleware
-  app.use(morgan("combined", { stream: { write: (msg) => logger.http(msg) } }))
+  app.use(morgan("combined", { stream: { write: (msg) => logger.http(msg) } }));
 
   // Request ID Middleware
-  app.use(requestIdMiddleware)
+  app.use(requestIdMiddleware);
 
   // Rate Limiting
-  app.use(globalRateLimiter)
+  app.use(globalRateLimiter);
 
-  app.use("/api-docs", swaggerUi.serve)
+  app.use("/api-docs", swaggerUi.serve);
   app.get(
     "/api-docs",
     swaggerUi.setup(swaggerSpec, {
@@ -41,7 +44,7 @@ export const createApp = (): Application => {
         showRequestHeaders: true,
       },
     }),
-  )
+  );
 
   // Health Check Route
   app.get("/health", (_req, res) => {
@@ -49,10 +52,10 @@ export const createApp = (): Application => {
       status: "ok",
       app: config.app_name,
       timestamp: new Date().toISOString(),
-    })
-  })
+    });
+  });
 
-  app.use("/api", apiRoutes)
+  app.use("/api", apiRoutes);
 
   // 404 Handler
   app.use((_req, res) => {
@@ -61,11 +64,11 @@ export const createApp = (): Application => {
       message: "Resource not found",
       statusCode: 404,
       timestamp: new Date().toISOString(),
-    })
-  })
+    });
+  });
 
   // Error Middleware
-  app.use(errorMiddleware)
+  app.use(errorMiddleware);
 
-  return app
-}
+  return app;
+};
