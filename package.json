@@ -12,7 +12,7 @@
   "author": "",
   "main": "dist/server.js",
   "scripts": {
-    "build": "tsc && tsc-alias",
+    "build": "prisma generate && tsc && tsc-alias",
     "db:docker:up": "docker-compose up -d",
     "db:docker:down": "docker-compose down",
     "db:init": "npm run db:migrate",

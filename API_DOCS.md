@@ -43,6 +43,9 @@ Currently supporting API v1 with planned v2 enhancements.
 - `PATCH /users/{id}` - Update user profile
 - `DELETE /users/{id}` - Delete user (admin only)
 
+### Closet
+- `GET /mobile/closet` - Get wardrobe list (Returns default items if closet is empty)
+
 ## Response Format
 
 All endpoints return responses in the following format:
@@ -79,8 +82,12 @@ Errors follow this format:
 
 After running `npm run db:seed`:
 
-- Email: `admin@wearly.com`
-- Password: `Admin@123`
+- **Admin Account**:
+  - Email: `admin@wearly.com`
+  - Password: `Admin@123`
+- **User Account**:
+  - Email: `user@wearly.com`
+  - Password: `User@123`
 
 ## Interactive Testing
 
