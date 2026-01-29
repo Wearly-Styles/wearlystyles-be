@@ -4,7 +4,7 @@ import { SuccessResponse } from "@common/responses/success.response";
 import { AppError } from "@common/errors/app-error";
 import { MESSAGES } from "@common/constants/messages.constant";
 import { ErrorCode } from "@common/enums/error-code.enum";
-import { CreateClothingItemDTO } from "./clothing.dto";
+import { CreateCategoryDTO, CreateClothingItemDTO } from "./clothing.dto";
 import type { RequestUser } from "@common/interfaces/request-user.interface";
 
 export class ClothingController {
@@ -48,5 +48,43 @@ export class ClothingController {
     } catch (error) {
       next(error);
     }
+  }
+
+  async createCategory(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user as RequestUser;
+      const data = CreateCategoryDTO.parse(req.body);
+
+      const result = await this.clothingService.createCategory(
+        user.id,
+        data,
+      );
+
+      res
+        .status(201)
+        .json(
+          new SuccessResponse("Category created successfully", result, 201),
+        );
+    } catch (error) {
+      next(error);
+    } 
+  }
+
+  async createTag(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user as RequestUser;
+      const data = req.body;
+      const result = await this.clothingService.createTag(
+        user.id,
+        data,
+      );
+      res
+        .status(201)
+        .json(
+          new SuccessResponse("Tag created successfully", result, 201),
+        );
+    } catch (error) {
+      next(error);
+    } 
   }
 }
