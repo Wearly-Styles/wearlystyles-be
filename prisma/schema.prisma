@@ -32,6 +32,8 @@ model User {
   notificationsCreated Notification[]     @relation("NotificationActor")
   payments             Payment[]
 
+  categories           Category[]
+  tag                  Tag[]
   @@map("users")
 }
 
@@ -54,24 +56,27 @@ model UserProfile {
 
 model Category {
   id          Int             @id @default(autoincrement())
+  userId      Int       @map("user_id")
   name        String?
   description String?
   icon        String?
   createdAt   DateTime?       @map("created_at")
 
   clothingItems ClothingItem[]
+  user         User            @relation(fields: [userId], references: [id])
 
   @@map("categories")
 }
 
 model Tag {
   id        Int                 @id @default(autoincrement())
+  userId      Int       @map("user_id")
   name      String?
   type      String?
   createdAt DateTime?           @map("created_at")
 
   clothingItemTags ClothingItemTag[]
-
+  user         User            @relation(fields: [userId], references: [id])
   @@map("tags")
 }
 

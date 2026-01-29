@@ -21,4 +21,12 @@ export const CreateClothingItemDTO = z.object({
   material: z.string().optional(),
 });
 
+export const CreateCategoryDTO = z.object({
+  name: z.string().min(1, "Name is required"),
+});
+
+export const CreateTagDTO = z.object({
+  name: z.string().min(1, "Name is required"),
+});
+
 export type CreateClothingItemDTO = z.infer<typeof CreateClothingItemDTO>;

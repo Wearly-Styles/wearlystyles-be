@@ -28,4 +28,16 @@ router.post(
   clothingController.createClothingItem.bind(clothingController),
 );
 
+router.post(
+  "/categories",
+  authMiddleware,
+  clothingController.createCategory.bind(clothingController),
+);
+
+router.post(
+  "/tags",
+  authMiddleware,
+  clothingController.createTag.bind(clothingController),
+);
+
 export default router;
