@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+
 dotenv.config();
 
 interface IConfig {
@@ -6,7 +7,7 @@ interface IConfig {
   port: number;
   app_name: string;
   database_url: string;
-  frontend_url: string; 
+  frontend_url: string;
   database: {
     host: string;
     port: number;
@@ -43,6 +44,11 @@ interface IConfig {
   swagger: {
     enabled: boolean;
     apiVersion: string;
+  };
+  cloudinary: {
+    cloudName: string;
+    apiKey: string;
+    apiSecret: string;
   };
 }
 
@@ -95,6 +101,12 @@ const config: IConfig = {
   swagger: {
     enabled: process.env.SWAGGER_ENABLED === "true",
     apiVersion: process.env.API_VERSION || "v1",
+  },
+
+  cloudinary: {
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME || "",
+    apiKey: process.env.CLOUDINARY_API_KEY || "",
+    apiSecret: process.env.CLOUDINARY_API_SECRET || "",
   },
 };
 

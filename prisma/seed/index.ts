@@ -26,8 +26,8 @@ const seedDatabase = async () => {
     Object.assign(context, await seedUsers(prisma))
     await seedUserProfiles(prisma, context)
 
-    Object.assign(context, await seedCategories(prisma))
-    Object.assign(context, await seedTags(prisma))
+    Object.assign(context, await seedCategories(prisma, context))
+    Object.assign(context, await seedTags(prisma, context))
     Object.assign(context, await seedClothingItems(prisma, context))
     await seedClothingItemTags(prisma, context)
 
