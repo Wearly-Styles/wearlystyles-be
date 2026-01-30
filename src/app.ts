@@ -1,3 +1,4 @@
+import config from "@config/env"
 import express, { type Application } from "express"
 import cors from "cors"
 import helmet from "helmet"
@@ -9,7 +10,6 @@ import { requestIdMiddleware } from "@middleware/request-id.middleware"
 import { globalRateLimiter } from "@middleware/rate-limit.middleware"
 import apiRoutes from "@api/index"
 import logger from "@config/logger"
-import config from "@config/env"
 
 export const createApp = (): Application => {
   const app = express()

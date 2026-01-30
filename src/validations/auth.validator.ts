@@ -1,6 +1,14 @@
 import { z } from "zod"
 import { isValidEmail } from "@validations/email.validator"
 
+export const googleAuthSchema = z.object({
+  body: z.object({
+    authCode: z.string().min(1, 'Authorization code is required'),
+  }),
+});
+
+export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
+
 export const registerSchema = z.object({
   body: z.object({
     email: z.string().refine(isValidEmail, "Invalid email format"),

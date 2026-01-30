@@ -5,23 +5,22 @@ import { AuthError } from "@common/errors/auth-error"
 import { AppError } from "@common/errors/app-error"
 import { MESSAGES } from "@common/constants/messages.constant"
 import { ErrorCode } from "@common/enums/error-code.enum"
-import type { RegisterDTO, LoginDTO } from "./auth.dto"
+import type { RegisterDTO, LoginDTO, GoogleAuthDTO } from "./auth.dto"
 import type { User } from "@prisma/client"
+import { googleClient } from "@config/google"
+import config from "@config/env"
 
 export class AuthService {
   private userRepository = new UserRepository()
 
   async register(data: RegisterDTO): Promise<{ user: Partial<User>; token: string; refreshToken: string }> {
-    // Check if user already exists
     const existingUser = await this.userRepository.findByEmail(data.email)
     if (existingUser) {
       throw new AppError(MESSAGES.AUTH_EMAIL_EXISTS, 409, ErrorCode.CONFLICT)
     }
 
-    // Hash password
     const hashedPassword = await hashPassword(data.password)
 
-    // Create user
     const user = await this.userRepository.create({
       email: data.email,
       password: hashedPassword,
@@ -29,21 +28,19 @@ export class AuthService {
       status: "active",
       profile: data.fullName
         ? {
-            create: {
-              fullName: data.fullName,
-            },
-          }
+          create: {
+            fullName: data.fullName,
+          },
+        }
         : undefined,
     })
 
-    // Generate tokens
     const role = user.role ?? "user"
     const token = generateToken({ id: user.id, email: user.email, role })
     const refreshToken = generateRefreshToken({ id: user.id, email: user.email, role })
 
     await this.userRepository.update(user.id, { refreshToken })
 
-    // Return user without password
     const { password, ...userWithoutPassword } = user
     return {
       user: userWithoutPassword,
@@ -53,19 +50,16 @@ export class AuthService {
   }
 
   async login(data: LoginDTO): Promise<{ user: Partial<User>; token: string; refreshToken: string }> {
-    // Find user
     const user = await this.userRepository.findByEmail(data.email)
     if (!user) {
       throw new AuthError(MESSAGES.AUTH_INVALID_CREDENTIALS)
     }
 
-    // Verify password
     const isPasswordValid = await comparePassword(data.password, user.password)
     if (!isPasswordValid) {
       throw new AuthError(MESSAGES.AUTH_INVALID_CREDENTIALS)
     }
 
-    // Generate tokens
     const role = user.role ?? "user"
     const token = generateToken({ id: user.id, email: user.email, role })
     const refreshToken = generateRefreshToken({ id: user.id, email: user.email, role })
@@ -100,5 +94,53 @@ export class AuthService {
     const role = payload.role ?? user.role ?? "user"
     const token = generateToken({ id: payload.id, email: payload.email, role })
     return { token }
+  }
+
+  async googleAuth(data: GoogleAuthDTO): Promise<{ user: Partial<User>; token: string; refreshToken: string }> {
+    try {
+      const { tokens } = await googleClient.getToken(data.authCode);
+
+      const ticket = await googleClient.verifyIdToken({
+        idToken: tokens.id_token!,
+        audience: config.google.clientId,
+      });
+
+      const payload = ticket.getPayload();
+      if (!payload || !payload.email) {
+        throw new AuthError(MESSAGES.AUTH_GOOGLE_FAILED);
+      }
+
+      let user = await this.userRepository.findByEmail(payload.email);
+
+      if (!user) {
+        user = await this.userRepository.create({
+          email: payload.email,
+          password: "",
+          role: "user",
+          status: "active",
+          profile: {
+            create: {
+              fullName: payload.name || "Google User",
+            },
+          },
+        });
+      }
+
+      const role = user.role ?? "user";
+      const token = generateToken({ id: user.id, email: user.email, role });
+      const refreshToken = generateRefreshToken({ id: user.id, email: user.email, role });
+
+      await this.userRepository.update(user.id, { refreshToken });
+
+      const { password, ...userWithoutPassword } = user;
+      return {
+        user: userWithoutPassword,
+        token,
+        refreshToken,
+      };
+    } catch (error) {
+      console.error("Google Auth Error Detail:", error); // Log chi tiết để debug
+      throw new AuthError(MESSAGES.AUTH_GOOGLE_FAILED);
+    }
   }
 }

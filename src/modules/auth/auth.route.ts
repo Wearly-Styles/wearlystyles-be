@@ -124,13 +124,45 @@
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ErrorResponse'
+ * 
+ * /auth/google:
+ *   post:
+ *     tags:
+ *       - Authentication
+ *     summary: Login with Google
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/GoogleAuthRequest'
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResponse'
+ *       400:
+ *         description: Invalid authorization code
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
+ *       401:
+ *         description: Google authentication failed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ErrorResponse'
  */
 
 import { Router } from "express"
 import { AuthController } from "./auth.controller"
+import { authMiddleware } from "@middleware/auth.middleware"
 import { validateRequest } from "@middleware/validation.middleware"
 import { authRateLimiter } from "@middleware/rate-limit.middleware"
-import { registerSchema, loginSchema } from "@validations/auth.validator"
+import { registerSchema, loginSchema, googleAuthSchema } from "@validations/auth.validator"
 
 const router = Router()
 const authController = new AuthController()
@@ -143,8 +175,12 @@ router.post("/login", authRateLimiter, validateRequest(loginSchema), (req, res, 
   authController.login(req, res, next),
 )
 
-router.post("/logout", (req, res, next) => authController.logout(req, res, next))
+router.post("/logout", authMiddleware, (req, res, next) => authController.logout(req, res, next))
 
 router.post("/refresh-token", (req, res, next) => authController.refreshToken(req, res, next))
+
+router.post("/google", authRateLimiter, validateRequest(googleAuthSchema), 
+  (req, res, next) => authController.googleLogin(req, res, next)
+)
 
 export default router
