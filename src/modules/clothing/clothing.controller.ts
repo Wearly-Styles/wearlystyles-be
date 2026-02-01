@@ -87,4 +87,40 @@ export class ClothingController {
       next(error);
     } 
   }
+
+  async listCategories(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user as RequestUser;
+      const { search } = req.query as { search?: string };
+      const result = await this.clothingService.listCategories(
+        user.id,
+        search,
+      );
+      res
+        .status(200)
+        .json(
+          new SuccessResponse("Categories retrieved successfully", result, 200),
+        );
+    } catch (error) {
+      next(error);
+    } 
+  }
+
+  async listTags(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user as RequestUser; 
+      const { search } = req.query as { search?: string };
+      const result = await this.clothingService.listTags(
+        user.id,
+        search,
+      );
+      res
+        .status(200)
+        .json(
+          new SuccessResponse("Tags retrieved successfully", result, 200),
+        );
+    } catch (error) {
+      next(error);
+    }
+  }
 }

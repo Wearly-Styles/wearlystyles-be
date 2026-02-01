@@ -40,4 +40,16 @@ router.post(
   clothingController.createTag.bind(clothingController),
 );
 
+router.get(
+  "/categories",
+  authMiddleware,
+  clothingController.listCategories.bind(clothingController),
+);
+
+router.get(
+  "/tags",
+  authMiddleware,
+  clothingController.listTags.bind(clothingController),
+);
+
 export default router;

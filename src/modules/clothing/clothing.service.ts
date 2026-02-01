@@ -42,21 +42,45 @@ export class ClothingService {
       });
     }
 
-  async createCategory(userId: number, data: { name: string }) {
-    return this.prisma.category.create({
-      data: {
-        userId,
-        ...data,
-      },
-    });
-  }
+    async createCategory(userId: number, data: { name: string }) {
+      return this.prisma.category.create({
+        data: {
+          userId,
+          ...data,
+        },
+      });
+    }
 
-  async createTag(userId: number, data: { name: string }) {
-    return this.prisma.tag.create({
-      data: {
-        userId, 
-        ...data,
-      },
-    });
-  }
+    async createTag(userId: number, data: { name: string }) {
+      return this.prisma.tag.create({
+        data: {
+          userId, 
+          ...data,
+        },
+      });
+    }
+
+    async listCategories(userId: number, search?: string) {
+      return this.prisma.category.findMany({
+        where: {
+          userId,
+          name: search ? { contains: search, mode: "insensitive" } : undefined,
+        },
+        orderBy: {
+          name: "asc",
+        },
+      });
+    }
+
+    async listTags(userId: number, search?: string) {
+      return this.prisma.tag.findMany({
+        where: {
+          userId,
+          name: search ? { contains: search, mode: "insensitive" } : undefined,
+        },
+        orderBy: {
+          name: "asc",
+        },
+      });
+    }
 }
