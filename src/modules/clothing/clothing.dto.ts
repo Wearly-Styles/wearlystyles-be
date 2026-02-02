@@ -29,4 +29,32 @@ export const CreateTagDTO = z.object({
   name: z.string().min(1, "Name is required"),
 });
 
+export const listCategoriesDTO = z.object({
+  search: z.string().optional(),
+  page: z
+    .string()
+    .optional()
+    .transform((val) => (val ? Number(val) : 1))  
+    .pipe(z.number().int().positive()),
+  limit: z
+    .string()
+    .optional()
+    .transform((val) => (val ? Number(val) : 10))
+    .pipe(z.number().int().positive()),
+});
+
+export const listTagsDTO = z.object({
+  search: z.string().optional(),
+  page: z 
+    .string()
+    .optional()
+    .transform((val) => (val ? Number(val) : 1))
+    .pipe(z.number().int().positive()),
+  limit: z
+    .string() 
+    .optional()
+    .transform((val) => (val ? Number(val) : 10))
+    .pipe(z.number().int().positive()),
+});
+
 export type CreateClothingItemDTO = z.infer<typeof CreateClothingItemDTO>;
