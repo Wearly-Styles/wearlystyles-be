@@ -1,49 +1,54 @@
-import dotenv from "dotenv";
+import dotenv from "dotenv"
 
-dotenv.config();
+dotenv.config()
 
 interface IConfig {
-  node_env: string;
-  port: number;
-  app_name: string;
-  database_url: string;
+  node_env: string
+  port: number
+  app_name: string
+  database_url: string
   database: {
-    host: string;
-    port: number;
-    username: string;
-    password: string;
-    database: string;
-    synchronize: boolean;
-    logging: boolean;
-  };
+    host: string
+    port: number
+    username: string
+    password: string
+    database: string
+    synchronize: boolean
+    logging: boolean
+  }
   jwt: {
-    secret: string;
-    expiresIn: string;
-    refreshSecret: string;
-    refreshExpiresIn: string;
-  };
+    secret: string
+    expiresIn: string
+    refreshSecret: string
+    refreshExpiresIn: string
+  }
   log: {
-    level: string;
-  };
+    level: string
+  }
   email: {
-    smtpHost: string;
-    smtpPort: number;
-    user: string;
-    pass: string;
-    fromEmail: string;
-  };
+    smtpHost: string
+    smtpPort: number
+    user: string
+    pass: string
+    fromEmail: string
+  }
   redis: {
-    url: string;
-  };
+    url: string
+  }
   swagger: {
-    enabled: boolean;
-    apiVersion: string;
-  };
+    enabled: boolean
+    apiVersion: string
+  }
   cloudinary: {
-    cloudName: string;
-    apiKey: string;
-    apiSecret: string;
-  };
+    cloudName: string
+    apiKey: string
+    apiSecret: string
+  }
+  openweather_api_key: string
+  google_oauth_client_id: string
+  google_oauth_client_secret: string
+  gemini_api_key: string
+  gemini_model: string
 }
 
 const config: IConfig = {
@@ -95,6 +100,12 @@ const config: IConfig = {
     apiKey: process.env.CLOUDINARY_API_KEY || "",
     apiSecret: process.env.CLOUDINARY_API_SECRET || "",
   },
-};
 
-export default config;
+  openweather_api_key: process.env.OPENWEATHER_API_KEY || "",
+  google_oauth_client_id: process.env.GOOGLE_OAUTH_CLIENT_ID || "",
+  google_oauth_client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || "",
+  gemini_api_key: process.env.GEMINI_API_KEY || "",
+  gemini_model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
+}
+
+export default config
