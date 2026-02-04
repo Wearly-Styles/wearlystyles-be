@@ -1,7 +1,8 @@
 import type { Request, Response, NextFunction } from "express"
 import { AuthService } from "./auth.service"
 import { SuccessResponse } from "@common/responses/success.response"
-import type { RegisterDTO, LoginDTO } from "./auth.dto"
+import type { RegisterDTO, LoginDTO, GoogleAuthDTO } from "./auth.dto"
+import { AuthError } from "@common/errors/auth-error"
 
 export class AuthController {
   private authService = new AuthService()
@@ -30,14 +31,16 @@ export class AuthController {
 
   async logout(req: Request, res: Response, next: NextFunction) {
     try {
-      if (!req.user) {
-        throw new Error("User not authenticated")
+      const userId = req.user?.id;
+
+      if (!userId) {
+        throw new AuthError("User not authenticated");
       }
 
-      await this.authService.logout(req.user.id)
-      res.json(new SuccessResponse("Logout successful"))
+      await this.authService.logout(userId);
+      res.json(new SuccessResponse("Logout successful"));
     } catch (error) {
-      next(error)
+      next(error);
     }
   }
 
@@ -51,4 +54,16 @@ export class AuthController {
       next(error)
     }
   }
+
+  async googleLogin(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data: GoogleAuthDTO = req.body
+      const result = await this.authService.googleAuth(data)
+
+      res.json(new SuccessResponse("Google login successful", result))
+    } catch (error) {
+      next(error)
+    }
+  }
+
 }

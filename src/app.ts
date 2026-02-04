@@ -1,15 +1,15 @@
-import express, { type Application } from "express";
-import cors from "cors";
-import helmet from "helmet";
-import morgan from "morgan";
-import swaggerUi from "swagger-ui-express";
-import { swaggerSpec } from "@config/swagger";
-import { errorMiddleware } from "@middleware/error.middleware";
-import { requestIdMiddleware } from "@middleware/request-id.middleware";
-import { globalRateLimiter } from "@middleware/rate-limit.middleware";
-import apiRoutes from "@api/index";
-import logger from "@config/logger";
-import config from "@config/env";
+import config from "@config/env"
+import express, { type Application } from "express"
+import cors from "cors"
+import helmet from "helmet"
+import morgan from "morgan"
+import swaggerUi from "swagger-ui-express"
+import { swaggerSpec } from "@config/swagger"
+import { errorMiddleware } from "@middleware/error.middleware"
+import { requestIdMiddleware } from "@middleware/request-id.middleware"
+import { globalRateLimiter } from "@middleware/rate-limit.middleware"
+import apiRoutes from "@api/index"
+import logger from "@config/logger"
 
 export const createApp = (): Application => {
   const app = express();

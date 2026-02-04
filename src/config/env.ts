@@ -7,6 +7,7 @@ interface IConfig {
   port: number;
   app_name: string;
   database_url: string;
+  frontend_url: string;
   database: {
     host: string;
     port: number;
@@ -21,6 +22,11 @@ interface IConfig {
     expiresIn: string;
     refreshSecret: string;
     refreshExpiresIn: string;
+  };
+  google: {
+    clientId: string;
+    clientSecret: string;
+    redirectUri: string;
   };
   log: {
     level: string;
@@ -51,6 +57,7 @@ const config: IConfig = {
   port: Number.parseInt(process.env.PORT || "3000", 10),
   app_name: process.env.APP_NAME || "wearly-styles-be",
   database_url: process.env.DATABASE_URL || "",
+  frontend_url: process.env.FRONTEND_URL || "http://localhost:3000",
 
   database: {
     host: process.env.DB_HOST || "localhost",
@@ -67,6 +74,12 @@ const config: IConfig = {
     expiresIn: process.env.JWT_EXPIRES_IN || "24h",
     refreshSecret: process.env.JWT_REFRESH_SECRET || "default-refresh-secret",
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
+  },
+
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID || "",
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+    redirectUri: process.env.GOOGLE_CALLBACK_URL || "postmessage",
   },
 
   log: {
@@ -96,5 +109,9 @@ const config: IConfig = {
     apiSecret: process.env.CLOUDINARY_API_SECRET || "",
   },
 };
+
+if (!config.google.clientId || !config.google.clientSecret) {
+  console.warn("⚠️  CẢNH BÁO: GOOGLE_CLIENT_ID hoặc GOOGLE_CLIENT_SECRET chưa được cấu hình trong .env");
+}
 
 export default config;
