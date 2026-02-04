@@ -12,7 +12,12 @@ export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
 export const registerSchema = z.object({
   body: z.object({
     email: z.string().refine(isValidEmail, "Invalid email format"),
-    password: z.string().min(6, "Password must be at least 6 characters"),
+    password: z.string()
+      .min(6, "Password must be 6 characters or more")
+      .refine((val) => /[A-Z]/.test(val), "At least one uppercase letter")
+      .refine((val) => /[a-z]/.test(val), "At least one lowercase letter")
+      .refine((val) => /\d/.test(val), "At least one digit")
+      .refine((val) => /[@$!%*?&]/.test(val), "At least one special character"),
     fullName: z.string().min(1, "Full name is required").optional(),
   }),
 })

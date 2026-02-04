@@ -5,9 +5,6 @@ import clothingRoutes from "@modules/clothing/clothing.route";
 
 const router = Router();
 
-router.use("/auth", authRoutes)
-router.use("/users", userRoutes)
-
 // Mount routes
 router.use("/auth", authRoutes);
 router.use("/users", userRoutes);
