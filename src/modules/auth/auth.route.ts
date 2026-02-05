@@ -130,7 +130,7 @@ import { Router } from "express"
 import { AuthController } from "./auth.controller"
 import { validateRequest } from "@middleware/validation.middleware"
 import { authRateLimiter } from "@middleware/rate-limit.middleware"
-import { registerSchema, loginSchema } from "@validations/auth.validator"
+import { registerSchema, loginSchema, googleLoginSchema, googleCodeLoginSchema } from "@validations/auth.validator"
 
 const router = Router()
 const authController = new AuthController()
@@ -141,6 +141,14 @@ router.post("/register", authRateLimiter, validateRequest(registerSchema), (req,
 
 router.post("/login", authRateLimiter, validateRequest(loginSchema), (req, res, next) =>
   authController.login(req, res, next),
+)
+
+router.post("/login/google", authRateLimiter, validateRequest(googleLoginSchema), (req, res, next) =>
+  authController.loginWithGoogle(req, res, next),
+)
+
+router.post("/login/google-code", authRateLimiter, validateRequest(googleCodeLoginSchema), (req, res, next) =>
+  authController.loginWithGoogleCode(req, res, next),
 )
 
 router.post("/logout", (req, res, next) => authController.logout(req, res, next))

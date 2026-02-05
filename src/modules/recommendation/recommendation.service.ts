@@ -2,7 +2,7 @@ import config from "@config/env"
 import logger from "@config/logger"
 import { AppError } from "@common/errors/app-error"
 import { ErrorCode } from "@common/enums/error-code.enum"
-import type { RecommendationContextDTO, RecommendationResponse } from "./recommendation.dto"
+import type { RecommendationContextDTO, RecommendationResponse, OutfitRecommendation } from "./recommendation.dto"
 import { getTimeOfDay, mapDressCode, mapEventType } from "@helpers/context.helper"
 
 type GeminiResponse = {
@@ -13,6 +13,76 @@ type GeminiResponse = {
   }>
 }
 
+class AsyncSemaphore {
+  private current = 0
+  private queue: Array<(release: () => void) => void> = []
+
+  constructor(private max: number) {}
+
+  async acquire(): Promise<() => void> {
+    if (this.max <= 0) {
+      return () => {}
+    }
+
+    if (this.current < this.max) {
+      this.current += 1
+      return () => {
+        this.current = Math.max(0, this.current - 1)
+        const next = this.queue.shift()
+        if (next) next(() => this.release())
+      }
+    }
+
+    return new Promise((resolve) => {
+      this.queue.push(resolve)
+    })
+  }
+
+  private release() {
+    this.current = Math.max(0, this.current - 1)
+    const next = this.queue.shift()
+    if (next) next(() => this.release())
+  }
+}
+
+class SlidingWindowRateLimiter {
+  private timestamps: number[] = []
+
+  constructor(private windowMs: number, private max: number) {}
+
+  async acquire(): Promise<void> {
+    if (this.max <= 0) return
+
+    while (true) {
+      const now = Date.now()
+      this.timestamps = this.timestamps.filter((ts) => now - ts < this.windowMs)
+      if (this.timestamps.length < this.max) {
+        this.timestamps.push(now)
+        return
+      }
+
+      const waitMs = Math.max(0, this.windowMs - (now - this.timestamps[0]))
+      await new Promise((resolve) => setTimeout(resolve, waitMs))
+    }
+  }
+}
+
+class GeminiLimiter {
+  private semaphore: AsyncSemaphore
+  private rpmLimiter: SlidingWindowRateLimiter
+
+  constructor(rpm: number, concurrency: number) {
+    this.semaphore = new AsyncSemaphore(concurrency)
+    this.rpmLimiter = new SlidingWindowRateLimiter(60_000, rpm)
+  }
+
+  async acquire(): Promise<() => void> {
+    await this.rpmLimiter.acquire()
+    return this.semaphore.acquire()
+  }
+}
+
+
 export class RecommendationService {
   private static readonly MAX_CALENDAR_ITEMS = 5
   private static readonly MAX_TAGS_PER_ITEM = 6
@@ -22,6 +92,16 @@ export class RecommendationService {
   private static readonly RETRY_BASE_MS = 700
   private static readonly MINIMIZE_CALLS = true
   private static readonly REQUEST_TIMEOUT_MS = 12000
+  private static readonly GEMINI_RPM = Math.max(0, config.gemini_rpm || 0)
+  private static readonly GEMINI_CONCURRENCY = Math.max(0, config.gemini_concurrency || 0)
+  private static readonly CACHE_TTL_MS = Math.max(0, config.recommendation_cache_ttl_seconds || 0) * 1000
+  private static readonly CACHE_MAX = Math.max(0, config.recommendation_cache_max || 0)
+  private static readonly DISABLE_CACHE = Boolean(config.recommendation_disable_cache)
+  private static readonly CACHE = new Map<string, { expiresAt: number; value: RecommendationResponse }>()
+  private static readonly GEMINI_LIMITER = new GeminiLimiter(
+    RecommendationService.GEMINI_RPM,
+    RecommendationService.GEMINI_CONCURRENCY,
+  )
   private static readonly OUTFIT_RESPONSE_SCHEMA = {
     type: "object",
     properties: {
@@ -32,6 +112,18 @@ export class RecommendationService {
           style: { type: "string" },
           items: { type: "array", items: { type: "number" } },
           notes: { type: "array", items: { type: "string" } },
+          missingItems: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                name: { type: "string" },
+                category: { type: "string" },
+                reason: { type: "string" },
+              },
+              required: ["name"],
+            },
+          },
         },
         required: ["items", "notes"],
       },
@@ -44,12 +136,57 @@ export class RecommendationService {
             style: { type: "string" },
             items: { type: "array", items: { type: "number" } },
             notes: { type: "array", items: { type: "string" } },
+            missingItems: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  category: { type: "string" },
+                  reason: { type: "string" },
+                },
+                required: ["name"],
+              },
+            },
           },
           required: ["items", "notes"],
         },
       },
     },
     required: ["primary", "alternatives"],
+  }
+  private static readonly BATCH_RESPONSE_SCHEMA = {
+    type: "object",
+    properties: {
+      recommendations: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            eventId: { type: "string" },
+            eventTitle: { type: "string" },
+            eventType: { type: "string" },
+            style: { type: "string" },
+            items: { type: "array", items: { type: "number" } },
+            notes: { type: "array", items: { type: "string" } },
+            missingItems: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                  category: { type: "string" },
+                  reason: { type: "string" },
+                },
+                required: ["name"],
+              },
+            },
+          },
+          required: ["items", "notes"],
+        },
+      },
+    },
+    required: ["recommendations"],
   }
   private static readonly CANDIDATE_RESPONSE_SCHEMA = {
     type: "object",
@@ -64,6 +201,208 @@ export class RecommendationService {
       items: { type: "array", items: { type: "number" } },
     },
     required: ["items"],
+  }
+  private static readonly PREFILTER_THRESHOLD = 160
+  private static readonly PREFILTER_LIMIT = 120
+  private static readonly MAX_ALTERNATIVES = 3
+  private static readonly MIN_SUITABLE_ITEMS = 3
+  private static readonly SUITABLE_SCORE_THRESHOLD = 2
+  private static readonly CATEGORY_LIMITS: Record<string, number> = {
+    footwear: 1,
+    outerwear: 1,
+    onepiece: 1,
+  }
+
+  private normalizeText(value?: string | null): string {
+    return (value || "").toLowerCase()
+  }
+
+  private buildItemText(item: RecommendationContextDTO["closet"][number]): string {
+    const tags = (item.tags || []).join(" ")
+    return [
+      item.name,
+      item.category,
+      item.color,
+      item.season,
+      item.material,
+      tags,
+    ]
+      .map((value) => this.normalizeText(value))
+      .join(" ")
+  }
+
+  private deriveSeasons(context: RecommendationContextDTO): Set<string> {
+    const seasons = new Set<string>()
+    const tempC = context.weather?.tempC
+    const tags = context.weather?.tags || []
+
+    if (typeof tempC === "number") {
+      if (tempC <= 10) {
+        seasons.add("winter")
+      } else if (tempC <= 18) {
+        seasons.add("fall")
+        seasons.add("spring")
+      } else if (tempC <= 24) {
+        seasons.add("spring")
+        seasons.add("summer")
+      } else {
+        seasons.add("summer")
+      }
+    }
+
+    if (tags.includes("cold")) seasons.add("winter")
+    if (tags.includes("cool")) seasons.add("fall")
+    if (tags.includes("warm")) seasons.add("spring")
+    if (tags.includes("hot")) seasons.add("summer")
+
+    return seasons
+  }
+
+  private scoreClosetItem(item: RecommendationContextDTO["closet"][number], context: RecommendationContextDTO): number {
+    let score = 0
+    const text = this.buildItemText(item)
+    const eventType = context.selectedEventType || ""
+    const weatherTags = context.weather?.tags || []
+    const preferredSeasons = this.deriveSeasons(context)
+
+    if (item.isFavorite) score += 2
+
+    if (item.season && preferredSeasons.has(this.normalizeText(item.season))) {
+      score += 2
+    }
+
+    if (weatherTags.includes("rainy") || weatherTags.includes("rain_possible")) {
+      if (text.includes("rain") || text.includes("waterproof")) score += 1
+    }
+
+    if (eventType === "gym") {
+      if (text.includes("sport") || text.includes("active") || text.includes("athleisure")) score += 2
+    } else if (eventType.startsWith("formal")) {
+      if (text.includes("blazer") || text.includes("suit") || text.includes("dress") || text.includes("formal")) {
+        score += 2
+      }
+    } else if (eventType === "travel") {
+      if (text.includes("comfortable") || text.includes("sneaker") || text.includes("hoodie")) score += 1
+    }
+
+    return score
+  }
+
+  private hasFewSuitableItems(items: RecommendationContextDTO["closet"], context: RecommendationContextDTO): boolean {
+    let suitableCount = 0
+    for (const item of items) {
+      if (this.scoreClosetItem(item, context) >= RecommendationService.SUITABLE_SCORE_THRESHOLD) {
+        suitableCount += 1
+        if (suitableCount >= RecommendationService.MIN_SUITABLE_ITEMS) {
+          return false
+        }
+      }
+    }
+    return true
+  }
+
+  private prefilterCloset(
+    items: RecommendationContextDTO["closet"],
+    context: RecommendationContextDTO,
+  ): RecommendationContextDTO["closet"] {
+    if (items.length <= RecommendationService.PREFILTER_THRESHOLD) return items
+
+    const ranked = items
+      .map((item, index) => ({ item, index, score: this.scoreClosetItem(item, context) }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score
+        return a.index - b.index
+      })
+      .slice(0, RecommendationService.PREFILTER_LIMIT)
+      .map((entry) => entry.item)
+
+    if (ranked.length < Math.min(30, items.length)) {
+      return items
+    }
+
+    return ranked
+  }
+
+  private getItemGroup(item: RecommendationContextDTO["closet"][number]): string | null {
+    const text = this.buildItemText(item)
+    const hasAny = (keywords: string[]) => keywords.some((keyword) => text.includes(keyword))
+
+    if (hasAny(["shoe", "sneaker", "boot", "heel", "sandal", "loafer", "flat", "oxford", "trainer"])) {
+      return "footwear"
+    }
+    if (hasAny(["coat", "jacket", "blazer", "parka", "trench", "cardigan", "vest"])) {
+      return "outerwear"
+    }
+    if (hasAny(["dress", "jumpsuit", "romper"])) {
+      return "onepiece"
+    }
+    return null
+  }
+
+  private enforceCategoryLimits(
+    ids: number[],
+    closet: RecommendationContextDTO["closet"],
+    context: RecommendationContextDTO,
+  ): number[] {
+    if (!ids.length) return ids
+
+    const closetById = new Map<number, RecommendationContextDTO["closet"][number]>()
+    closet.forEach((item) => closetById.set(item.id, item))
+
+    const used: Record<string, number> = {}
+    const filtered: number[] = []
+
+    for (const id of ids) {
+      const item = closetById.get(id)
+      if (!item) continue
+      const group = this.getItemGroup(item)
+      const limit = group ? RecommendationService.CATEGORY_LIMITS[group] : undefined
+      if (group && typeof limit === "number") {
+        const count = used[group] || 0
+        if (count >= limit) continue
+        used[group] = count + 1
+      }
+      filtered.push(id)
+    }
+
+    if (filtered.length >= ids.length) return filtered
+
+    const rankedCandidates = closet
+      .filter((item) => !filtered.includes(item.id))
+      .map((item, index) => ({ item, index, score: this.scoreClosetItem(item, context) }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score
+        return a.index - b.index
+      })
+
+    for (const candidate of rankedCandidates) {
+      if (filtered.length >= ids.length) break
+      const group = this.getItemGroup(candidate.item)
+      const limit = group ? RecommendationService.CATEGORY_LIMITS[group] : undefined
+      if (group && typeof limit === "number") {
+        const count = used[group] || 0
+        if (count >= limit) continue
+        used[group] = count + 1
+      }
+      filtered.push(candidate.item.id)
+    }
+
+    return filtered
+  }
+
+  private buildOutfitName(eventType?: string, style?: string) {
+    const safeEvent = eventType?.replace(/_/g, " ") || "outfit"
+    const safeStyle = style?.replace(/_/g, " ")
+    return safeStyle ? `${safeStyle} ${safeEvent}` : safeEvent
+  }
+
+  private buildOutfitItems(
+    ids: number[],
+    closet: RecommendationContextDTO["closet"],
+  ): RecommendationContextDTO["closet"] {
+    const closetById = new Map<number, RecommendationContextDTO["closet"][number]>()
+    closet.forEach((item) => closetById.set(item.id, item))
+    return ids.map((id) => closetById.get(id)).filter((item): item is RecommendationContextDTO["closet"][number] => Boolean(item))
   }
 
   private compactCloset(items: RecommendationContextDTO["closet"]) {
@@ -169,6 +508,13 @@ export class RecommendationService {
         .slice(0, RecommendationService.MAX_PREFERENCES),
       selectedEventType: context.selectedEventType || normalizedCalendar[0]?.eventType || "casual_social",
       selectedStyle: context.selectedStyle || "smart_casual",
+      includeAlternatives: Boolean(context.includeAlternatives),
+      alternativesCount: Boolean(context.includeAlternatives)
+        ? Math.min(
+            RecommendationService.MAX_ALTERNATIVES,
+            Math.max(1, context.alternativesCount ?? 2),
+          )
+        : 0,
     }
   }
 
@@ -182,22 +528,21 @@ export class RecommendationService {
 
   private async recommendOutfits(context: RecommendationContextDTO): Promise<RecommendationResponse> {
     const apiKey = config.gemini_api_key
-    if (!apiKey) {
-      throw new AppError("Gemini API key is missing", 500, ErrorCode.SERVICE_UNAVAILABLE)
-    }
-
     const model = config.gemini_model || "gemini-1.5-flash"
     const useResponseSchema = !model.startsWith("gemini-2.5")
     const useThinkingBudgetZero = model.startsWith("gemini-2.5")
-    const closetIds = new Set(context.closet.map((item) => item.id))
     const safeContext = this.buildSafeContext(context)
+    const fullCloset = safeContext.closet
+    const workingCloset = this.prefilterCloset(fullCloset, safeContext)
+    const workingContext: RecommendationContextDTO = { ...safeContext, closet: workingCloset }
+    const closetIds = new Set(workingContext.closet.map((item) => item.id))
     const hasInputCalendar = Array.isArray(context.calendar) && context.calendar.length > 0
     const buildFallbackItems = () => {
-      const favorites = safeContext.closet
+      const favorites = fullCloset
         .filter((item) => item.isFavorite)
         .map((item) => Number(item.id))
         .filter((id) => Number.isFinite(id))
-      const others = safeContext.closet
+      const others = fullCloset
         .filter((item) => !item.isFavorite)
         .map((item) => Number(item.id))
         .filter((id) => Number.isFinite(id))
@@ -207,8 +552,37 @@ export class RecommendationService {
       return unique.slice(0, 6)
     }
     const fallbackItems = buildFallbackItems()
-    if (safeContext.closet.length > 0 && fallbackItems.length === 0) {
+    if (fullCloset.length > 0 && fallbackItems.length === 0) {
       throw new AppError("Closet item ids are invalid", 400, ErrorCode.BAD_REQUEST)
+    }
+
+    const includeAlternatives = Boolean(workingContext.includeAlternatives)
+    const alternativesCount = workingContext.alternativesCount ?? 0
+    const minimizeCalls = RecommendationService.MINIMIZE_CALLS && !includeAlternatives
+
+    const buildFallbackResponse = (reason: string): RecommendationResponse => {
+      const items = this.enforceCategoryLimits(fallbackItems, fullCloset, workingContext)
+      const primary: OutfitRecommendation = normalize({
+        eventTitle: "general",
+        eventType: workingContext.selectedEventType,
+        style: workingContext.selectedStyle,
+        items,
+        notes: items.length
+          ? [`Fallback recommendation (${reason}).`]
+          : ["No recommendation generated. Provide more context or closet items."],
+      })
+
+      return {
+        primary,
+        alternatives: [],
+        recommendations: [primary],
+        model,
+      }
+    }
+
+    if (!apiKey) {
+      logger.error("Recommendation fallback: Gemini API key is missing")
+      return buildFallbackResponse("Gemini API key is missing")
     }
 
     const basePrompt = [
@@ -217,11 +591,18 @@ export class RecommendationService {
       "Use only item IDs from the provided closet.",
       "Outfit must match the chosen style and event, and colors should be harmonious.",
       "Do NOT propose items that do not exist.",
+      "If the closet lacks key pieces, add up to 6 missingItems inside each outfit (name, category, reason).",
       "Return ONLY minified JSON with no markdown or extra text.",
       "Never include any prefix/suffix text.",
-      "Return only a primary outfit; alternatives must be an empty array.",
+      includeAlternatives
+        ? `Return a primary outfit and up to ${Math.max(1, alternativesCount)} alternatives.`
+        : "Return only a primary outfit; alternatives must be an empty array.",
       "Keep notes concise (max 2 short sentences).",
     ].join(" ")
+
+    const responseShape = includeAlternatives
+      ? '{ "primary": { "eventType": "", "style": "", "items": [1,2], "notes": ["..."], "missingItems": [{ "name": "", "category": "", "reason": "" }] }, "alternatives": [{ "eventType": "", "style": "", "items": [1,2], "notes": ["..."], "missingItems": [{ "name": "", "category": "", "reason": "" }] }] }'
+      : '{ "primary": { "eventType": "", "style": "", "items": [1,2], "notes": ["..."], "missingItems": [{ "name": "", "category": "", "reason": "" }] }, "alternatives": [] }'
 
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
     const buildRequestBody = (maxOutputTokens: number) => ({
@@ -230,8 +611,8 @@ export class RecommendationService {
           role: "user",
           parts: [
             {
-              text: `${basePrompt}\n\nReturn JSON with shape: { "primary": { "eventType": "", "style": "", "items": [1,2], "notes": ["..."] }, "alternatives": [] }\n\nContext:\n${JSON.stringify(
-                safeContext,
+              text: `${basePrompt}\n\nReturn JSON with shape: ${responseShape}\n\nContext:\n${JSON.stringify(
+                workingContext,
               )}`,
             },
           ],
@@ -246,13 +627,13 @@ export class RecommendationService {
       },
     })
 
-    const buildStrictRequestBody = (maxOutputTokens: number, contextForPrompt = safeContext) => ({
+    const buildStrictRequestBody = (maxOutputTokens: number, contextForPrompt = workingContext) => ({
       contents: [
         {
           role: "user",
           parts: [
             {
-              text: `${basePrompt}\nReturn ONLY minified JSON. No prose, no code fences.\nReturn JSON with shape: { "primary": { "eventType": "", "style": "", "items": [1,2], "notes": ["..."] }, "alternatives": [] }\nContext:\n${JSON.stringify(
+              text: `${basePrompt}\nReturn ONLY minified JSON. No prose, no code fences.\nReturn JSON with shape: ${responseShape}\nContext:\n${JSON.stringify(
                 contextForPrompt,
               )}`,
             },
@@ -356,29 +737,77 @@ export class RecommendationService {
       style?: string
       items?: number[]
       notes?: string[]
-    }) => ({
-      eventId: rec?.eventId,
-      eventTitle: rec?.eventTitle,
-      eventType: rec?.eventType || safeContext.selectedEventType,
-      style: rec?.style || safeContext.selectedStyle,
-      items: (rec?.items || [])
+      missingItems?: Array<{ name?: string; category?: string; reason?: string }>
+    }) => {
+      const rawItems = (rec?.items || [])
         .map((id) => Number(id))
         .filter((id) => Number.isFinite(id))
-        .filter((id) => closetIds.has(id)),
-      notes: rec?.notes || [],
-    })
+        .filter((id) => closetIds.has(id))
+      const uniqueItems = Array.from(new Set(rawItems))
+      const adjustedItems = this.enforceCategoryLimits(uniqueItems, workingContext.closet, workingContext)
+      const outfitItems = this.buildOutfitItems(adjustedItems, workingContext.closet)
+      const eventType = rec?.eventType || workingContext.selectedEventType
+      const style = rec?.style || workingContext.selectedStyle
+      return {
+        outfit: {
+          name: this.buildOutfitName(eventType, style),
+          items: outfitItems,
+        },
+        eventId: rec?.eventId,
+        eventTitle: rec?.eventTitle,
+        eventType,
+        style,
+        items: adjustedItems,
+        notes: rec?.notes || [],
+        missingItems: this.hasFewSuitableItems(fullCloset, workingContext)
+          ? (rec?.missingItems || [])
+              .filter((item) => item?.name)
+              .map((item) => ({
+                name: String(item.name || "").trim(),
+                category: item.category ? String(item.category).trim() : undefined,
+                reason: item.reason ? String(item.reason).trim() : undefined,
+              }))
+              .filter((item) => item.name.length > 0)
+              .slice(0, 6)
+          : [],
+      }
+    }
 
     const fullContext = {
-      ...safeContext,
-      closet: this.compactCloset(safeContext.closet),
+      ...workingContext,
+      closet: this.compactCloset(workingContext.closet),
     }
     const rawOutputs: string[] = []
     const allowExtraCalls = fullContext.closet.length >= RecommendationService.CHUNK_SIZE
 
     let parsed: {
-      primary?: { eventId?: string; eventTitle?: string; eventType?: string; style?: string; items?: number[]; notes?: string[] }
-      alternatives?: Array<{ eventId?: string; eventTitle?: string; eventType?: string; style?: string; items?: number[]; notes?: string[] }>
-      recommendations?: Array<{ eventId?: string; eventTitle?: string; eventType?: string; style?: string; items?: number[]; notes?: string[] }>
+      primary?: {
+        eventId?: string
+        eventTitle?: string
+        eventType?: string
+        style?: string
+        items?: number[]
+        notes?: string[]
+        missingItems?: Array<{ name?: string; category?: string; reason?: string }>
+      }
+      alternatives?: Array<{
+        eventId?: string
+        eventTitle?: string
+        eventType?: string
+        style?: string
+        items?: number[]
+        notes?: string[]
+        missingItems?: Array<{ name?: string; category?: string; reason?: string }>
+      }>
+      recommendations?: Array<{
+        eventId?: string
+        eventTitle?: string
+        eventType?: string
+        style?: string
+        items?: number[]
+        notes?: string[]
+        missingItems?: Array<{ name?: string; category?: string; reason?: string }>
+      }>
     } = {}
 
     const requestItemsOnly = async (contextForPrompt: RecommendationContextDTO) => {
@@ -415,25 +844,32 @@ export class RecommendationService {
       return []
     }
 
-    type NormalizedRecommendation = {
-      eventId?: string
-      eventTitle?: string
-      eventType?: string
-      style?: string
-      items: number[]
-      notes: string[]
-    }
-
     const generateSingleRecommendation = async (
       contextForPrompt: RecommendationContextDTO,
-    ): Promise<NormalizedRecommendation> => {
+    ): Promise<OutfitRecommendation> => {
       const localFullContext = {
         ...contextForPrompt,
         closet: this.compactCloset(contextForPrompt.closet),
       }
       let localParsed: {
-        primary?: { eventId?: string; eventTitle?: string; eventType?: string; style?: string; items?: number[]; notes?: string[] }
-        recommendations?: Array<{ eventId?: string; eventTitle?: string; eventType?: string; style?: string; items?: number[]; notes?: string[] }>
+        primary?: {
+          eventId?: string
+          eventTitle?: string
+          eventType?: string
+          style?: string
+          items?: number[]
+          notes?: string[]
+          missingItems?: Array<{ name?: string; category?: string; reason?: string }>
+        }
+        recommendations?: Array<{
+          eventId?: string
+          eventTitle?: string
+          eventType?: string
+          style?: string
+          items?: number[]
+          notes?: string[]
+          missingItems?: Array<{ name?: string; category?: string; reason?: string }>
+        }>
       } = {}
 
       const seedItems = await requestItemsOnly(localFullContext)
@@ -457,135 +893,224 @@ export class RecommendationService {
         }
       }
 
-      let primary: NormalizedRecommendation = localParsed.primary
+      let primary: OutfitRecommendation = localParsed.primary
         ? normalize(localParsed.primary)
         : localParsed.recommendations?.length
           ? normalize(localParsed.recommendations[0])
-          : {
+          : normalize({
               eventTitle: "general",
-              eventType: contextForPrompt.selectedEventType || safeContext.selectedEventType,
-              style: contextForPrompt.selectedStyle || safeContext.selectedStyle,
+              eventType: contextForPrompt.selectedEventType || workingContext.selectedEventType,
+              style: contextForPrompt.selectedStyle || workingContext.selectedStyle,
               items: seedItems,
               notes: seedItems.length
                 ? ["Generated from items-only selection."]
                 : ["No recommendation generated. Provide more context or closet items."],
-            }
+            })
 
       if (!primary.items.length && fallbackItems.length) {
-        primary = {
+        primary = normalize({
           ...primary,
-          items: fallbackItems,
+          items: this.enforceCategoryLimits(fallbackItems, fullCloset, workingContext),
           notes: ["Generated with fallback selection."],
-        }
+        })
       }
 
       return primary
     }
 
-    const calendarEvents = safeContext.calendar || []
-    if (hasInputCalendar && calendarEvents.length > 0) {
-      const perEventRecommendations: NormalizedRecommendation[] = []
+    try {
+      const calendarEvents = workingContext.calendar || []
+      if (hasInputCalendar && calendarEvents.length > 0) {
+        const batchPrompt = [
+        "You are a wardrobe stylist.",
+        "Task: for each calendar event, pick the best outfit for the event type and dress code.",
+        "Use only item IDs from the provided closet.",
+        "Outfits must match the event and colors should be harmonious.",
+        "Do NOT propose items that do not exist.",
+        "If the closet lacks key pieces, add up to 6 missingItems inside each outfit (name, category, reason).",
+        "Return ONLY minified JSON with no markdown or extra text.",
+        "Never include any prefix/suffix text.",
+        "Return exactly one recommendation per calendar event, in the same order as provided.",
+        "Include eventId and eventTitle for each recommendation if available.",
+        "Use event.eventType and event.dressCode when present; otherwise use context.selectedEventType/style.",
+        "Keep notes concise (max 2 short sentences).",
+      ].join(" ")
 
-      for (const event of calendarEvents) {
-        const eventContext: RecommendationContextDTO = {
-          ...safeContext,
-          calendar: [event],
-          selectedEventType: event.eventType || safeContext.selectedEventType,
-          selectedStyle: event.dressCode || safeContext.selectedStyle,
+        const batchResponseShape =
+        '{ "recommendations": [ { "eventId": "", "eventTitle": "", "eventType": "", "style": "", "items": [1,2], "notes": ["..."], "missingItems": [{ "name": "", "category": "", "reason": "" }] } ] }'
+
+        const batchContext: RecommendationContextDTO = {
+        ...workingContext,
+        calendar: calendarEvents.map((event) => ({
+          ...event,
+          eventType: event.eventType || workingContext.selectedEventType || "casual_social",
+          dressCode: event.dressCode || workingContext.selectedStyle || "smart_casual",
+        })),
+        closet: this.compactCloset(workingContext.closet),
+      }
+
+        const maxOutputTokens = Math.min(1024, 256 + calendarEvents.length * 120)
+
+        const batchResponse = await this.fetchWithRetry(endpoint, {
+        contents: [
+          {
+            role: "user",
+            parts: [
+              {
+                text: `${batchPrompt}\n\nReturn JSON with shape: ${batchResponseShape}\n\nContext:\n${JSON.stringify(
+                  batchContext,
+                )}`,
+              },
+            ],
+          },
+        ],
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens,
+          responseMimeType: "application/json",
+          ...(useResponseSchema ? { responseSchema: RecommendationService.BATCH_RESPONSE_SCHEMA } : {}),
+          ...(useThinkingBudgetZero ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+        },
+      })
+
+        let batchParsed: {
+        recommendations?: Array<{
+          eventId?: string
+          eventTitle?: string
+          eventType?: string
+          style?: string
+          items?: number[]
+          notes?: string[]
+          missingItems?: Array<{ name?: string; category?: string; reason?: string }>
+        }>
+        } = {}
+
+        if (batchResponse.ok) {
+          const content = await parseGeminiResponse(batchResponse)
+          rawOutputs.push(content)
+          batchParsed = tryParse(content)
         }
-        const rec = await generateSingleRecommendation(eventContext)
-        perEventRecommendations.push({
-          ...rec,
-          eventId: event.id || rec.eventId || undefined,
-          eventTitle: event.title || rec.eventTitle || undefined,
+
+        const batchRecs = batchParsed.recommendations || []
+        const perEventRecommendations: OutfitRecommendation[] = calendarEvents.map((event, index) => {
+          const raw = batchRecs[index]
+          const eventType = raw?.eventType || event.eventType || workingContext.selectedEventType
+          const style = raw?.style || event.dressCode || workingContext.selectedStyle
+          let rec = raw
+            ? normalize({
+              ...raw,
+              eventId: event.id || raw.eventId,
+              eventTitle: event.title || raw.eventTitle,
+              eventType,
+              style,
+              })
+            : normalize({
+              eventId: event.id,
+              eventTitle: event.title,
+              eventType,
+              style,
+              items: fallbackItems,
+              notes: ["Generated with fallback selection."],
+            })
+
+          if (!rec.items.length && fallbackItems.length) {
+            rec = normalize({
+            ...rec,
+            eventType,
+            style,
+            items: this.enforceCategoryLimits(fallbackItems, fullCloset, workingContext),
+            notes: ["Generated with fallback selection."],
+            })
+          }
+
+          return rec
         })
-      }
 
-      const primary = perEventRecommendations[0] || {
+        const primary = perEventRecommendations[0] || normalize({
         eventTitle: "general",
-        eventType: safeContext.selectedEventType,
-        style: safeContext.selectedStyle,
-        items: fallbackItems,
+        eventType: workingContext.selectedEventType,
+        style: workingContext.selectedStyle,
+        items: this.enforceCategoryLimits(fallbackItems, fullCloset, workingContext),
         notes: ["Generated with fallback selection."],
-      }
+        })
 
-      return {
+        return {
         primary,
         alternatives: [],
         recommendations: perEventRecommendations,
         model,
-      }
-    }
-
-    const seedItems = await requestItemsOnly(fullContext)
-    if (seedItems.length) {
-      const seedContext = {
-        ...fullContext,
-        closet: fullContext.closet.filter((item) => seedItems.includes(item.id)),
-      }
-
-      const response = await this.fetchWithRetry(endpoint, buildStrictRequestBody(256, seedContext))
-      if (response.ok) {
-        const content = await parseGeminiResponse(response)
-        rawOutputs.push(content)
-        parsed = tryParse(content)
-      }
-
-      if (!parsed.primary && !parsed.recommendations) {
-        parsed = {
-          primary: {
-            eventType: safeContext.selectedEventType,
-            style: safeContext.selectedStyle,
-            items: seedItems,
-            notes: ["Generated from items-only selection."],
-          },
-          alternatives: [],
         }
       }
-    }
 
-    if (!seedItems.length) {
-      const response = await this.fetchWithRetry(endpoint, buildStrictRequestBody(320, fullContext))
-      if (response.ok) {
-        const content = await parseGeminiResponse(response)
-        rawOutputs.push(content)
-        parsed = tryParse(content)
+      const seedItems = await requestItemsOnly(fullContext)
+      if (seedItems.length) {
+        const seedContext = {
+        ...fullContext,
+        closet: fullContext.closet.filter((item) => seedItems.includes(item.id)),
+        }
+
+        const response = await this.fetchWithRetry(endpoint, buildStrictRequestBody(256, seedContext))
+        if (response.ok) {
+          const content = await parseGeminiResponse(response)
+          rawOutputs.push(content)
+          parsed = tryParse(content)
+        }
+
+        if (!parsed.primary && !parsed.recommendations) {
+          parsed = {
+            primary: {
+              eventType: workingContext.selectedEventType,
+              style: workingContext.selectedStyle,
+              items: seedItems,
+              notes: ["Generated from items-only selection."],
+            },
+            alternatives: [],
+          }
+        }
       }
-    }
 
-    if (RecommendationService.MINIMIZE_CALLS) {
-      let primary = parsed.primary
-        ? normalize(parsed.primary)
-        : parsed.recommendations?.length
-          ? normalize(parsed.recommendations[0])
-          : {
+      if (!seedItems.length) {
+        const response = await this.fetchWithRetry(endpoint, buildStrictRequestBody(320, fullContext))
+        if (response.ok) {
+          const content = await parseGeminiResponse(response)
+          rawOutputs.push(content)
+          parsed = tryParse(content)
+        }
+      }
+
+      if (minimizeCalls) {
+        let primary: OutfitRecommendation = parsed.primary
+          ? normalize(parsed.primary)
+          : parsed.recommendations?.length
+            ? normalize(parsed.recommendations[0])
+            : normalize({
               eventTitle: "general",
-              eventType: safeContext.selectedEventType,
-              style: safeContext.selectedStyle,
+              eventType: workingContext.selectedEventType,
+              style: workingContext.selectedStyle,
               items: seedItems,
               notes: seedItems.length
                 ? ["Generated from items-only selection."]
                 : ["No recommendation generated. Provide more context or closet items."],
-            }
+            })
 
-      if (!primary.items.length && fallbackItems.length) {
-        primary = {
-          ...primary,
-          items: fallbackItems,
-          notes: ["Generated with fallback selection."],
+        if (!primary.items.length && fallbackItems.length) {
+          primary = normalize({
+            ...primary,
+            items: this.enforceCategoryLimits(fallbackItems, fullCloset, workingContext),
+            notes: ["Generated with fallback selection."],
+          })
+        }
+
+        return {
+          primary,
+          alternatives: [],
+          recommendations: [],
+          model,
         }
       }
 
-      return {
-        primary,
-        alternatives: [],
-        recommendations: [],
-        model,
-      }
-    }
-
     if (
-      !RecommendationService.MINIMIZE_CALLS &&
+      !minimizeCalls &&
       !parsed.primary &&
       !parsed.recommendations &&
       fullContext.closet.length >= RecommendationService.CHUNK_SIZE
@@ -644,7 +1169,7 @@ export class RecommendationService {
             role: "user",
             parts: [
               {
-                text: `${basePrompt}\n\nReturn JSON with shape: { "primary": { "eventType": "", "style": "", "items": [1,2], "notes": ["..."] }, "alternatives": [] }\n\nContext:\n${JSON.stringify(
+                text: `${basePrompt}\n\nReturn JSON with shape: ${responseShape}\n\nContext:\n${JSON.stringify(
                   finalContext,
                 )}`,
               },
@@ -673,7 +1198,7 @@ export class RecommendationService {
       }
       rawOutputs.push(content)
       parsed = tryParse(content)
-    } else if (!RecommendationService.MINIMIZE_CALLS && !parsed.primary && !parsed.recommendations) {
+    } else if (!minimizeCalls && !parsed.primary && !parsed.recommendations) {
       const response = await this.fetchWithRetry(endpoint, buildRequestBody(320))
 
       if (!response.ok) {
@@ -691,7 +1216,7 @@ export class RecommendationService {
       parsed = tryParse(content)
     }
 
-    if (!RecommendationService.MINIMIZE_CALLS && allowExtraCalls && !parsed.primary && !parsed.recommendations) {
+    if (!minimizeCalls && allowExtraCalls && !parsed.primary && !parsed.recommendations) {
       const retryResponse = await this.fetchWithRetry(endpoint, buildRequestBody(256))
 
       if (retryResponse.ok) {
@@ -701,15 +1226,15 @@ export class RecommendationService {
       }
     }
 
-    if (!RecommendationService.MINIMIZE_CALLS && allowExtraCalls && !parsed.primary && !parsed.recommendations) {
+    if (!minimizeCalls && allowExtraCalls && !parsed.primary && !parsed.recommendations) {
       const fallbackPrompt = [
         basePrompt,
         "Return ONLY minified JSON: { \"items\": [1,2,3,4] }",
         "Pick 3-6 items that best fit the event/style.",
         "Context:",
         JSON.stringify({
-          ...safeContext,
-          closet: this.compactCloset(safeContext.closet),
+          ...workingContext,
+          closet: this.compactCloset(workingContext.closet),
         }),
       ].join("\n")
 
@@ -731,8 +1256,8 @@ export class RecommendationService {
         if (fallbackParsed.items?.length) {
           parsed = {
             primary: {
-              eventType: safeContext.selectedEventType,
-              style: safeContext.selectedStyle,
+              eventType: workingContext.selectedEventType,
+              style: workingContext.selectedStyle,
               items: fallbackParsed.items,
               notes: ["Generated with fallback selection."],
             },
@@ -743,15 +1268,15 @@ export class RecommendationService {
     }
 
     const hasItems = (rec?: { items?: number[] }) => Array.isArray(rec?.items) && rec!.items!.length > 0
-    if (!RecommendationService.MINIMIZE_CALLS && !hasItems(parsed.primary) && !hasItems(parsed.recommendations?.[0])) {
+    if (!minimizeCalls && !hasItems(parsed.primary) && !hasItems(parsed.recommendations?.[0])) {
       const itemsPrompt = [
         basePrompt,
         "Return ONLY minified JSON: { \"items\": [1,2,3,4] }",
         "Pick 3-6 items that best fit the event/style.",
         "Context:",
         JSON.stringify({
-          ...safeContext,
-          closet: this.compactCloset(safeContext.closet),
+          ...workingContext,
+          closet: this.compactCloset(workingContext.closet),
         }),
       ].join("\n")
 
@@ -773,8 +1298,8 @@ export class RecommendationService {
         if (itemsParsed.items?.length) {
           parsed = {
             primary: {
-              eventType: safeContext.selectedEventType,
-              style: safeContext.selectedStyle,
+              eventType: workingContext.selectedEventType,
+              style: workingContext.selectedStyle,
               items: itemsParsed.items,
               notes: ["Generated with items-only fallback."],
             },
@@ -784,7 +1309,7 @@ export class RecommendationService {
       }
     }
 
-    if (!RecommendationService.MINIMIZE_CALLS && !hasItems(parsed.primary) && !hasItems(parsed.recommendations?.[0])) {
+    if (!minimizeCalls && !hasItems(parsed.primary) && !hasItems(parsed.recommendations?.[0])) {
       const extracted = rawOutputs
         .join(" ")
         .match(/\b\d+\b/g)
@@ -795,8 +1320,8 @@ export class RecommendationService {
       if (uniqueIds.length) {
         parsed = {
           primary: {
-            eventType: safeContext.selectedEventType,
-            style: safeContext.selectedStyle,
+            eventType: workingContext.selectedEventType,
+            style: workingContext.selectedStyle,
             items: uniqueIds,
             notes: ["Generated from partial AI output."],
           },
@@ -805,45 +1330,47 @@ export class RecommendationService {
       }
     }
 
-    let primary: {
-      eventId?: string
-      eventTitle?: string
-      eventType?: string
-      style?: string
-      items: number[]
-      notes: string[]
-    } = parsed.primary
+    let primary: OutfitRecommendation = parsed.primary
       ? normalize(parsed.primary)
       : parsed.recommendations?.length
         ? normalize(parsed.recommendations[0])
-        : {
+        : normalize({
             eventTitle: "general",
-            eventType: safeContext.selectedEventType,
-            style: safeContext.selectedStyle,
+            eventType: workingContext.selectedEventType,
+            style: workingContext.selectedStyle,
             items: [],
             notes: ["No recommendation generated. Provide more context or closet items."],
-          }
+          })
 
     if (!primary.items.length && fallbackItems.length) {
-      primary = {
+      primary = normalize({
         ...primary,
-        items: fallbackItems,
+        items: this.enforceCategoryLimits(fallbackItems, fullCloset, workingContext),
         notes: ["Generated with fallback selection."],
-      }
+      })
     }
 
-    const alternatives =
-      parsed.alternatives?.map((rec) => normalize(rec)) ||
-      parsed.recommendations?.slice(1).map((rec) => normalize(rec)) ||
-      []
+    const rawAlternatives = includeAlternatives
+      ? parsed.alternatives?.map((rec) => normalize(rec)) ||
+        parsed.recommendations?.slice(1).map((rec) => normalize(rec)) ||
+        []
+      : []
+    const alternatives = includeAlternatives
+      ? rawAlternatives.slice(0, Math.max(1, alternativesCount || RecommendationService.MAX_ALTERNATIVES))
+      : []
 
-    const recommendations = [primary, ...alternatives]
+    const recommendations: OutfitRecommendation[] = [primary, ...alternatives]
 
-    return {
-      primary,
-      alternatives,
-      recommendations,
-      model,
+      return {
+        primary,
+        alternatives,
+        recommendations,
+        model,
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "AI unavailable"
+      logger.error(`Recommendation fallback: ${message}`)
+      return buildFallbackResponse(message)
     }
   }
 }

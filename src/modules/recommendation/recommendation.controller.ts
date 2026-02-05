@@ -22,7 +22,7 @@ export class RecommendationController {
         throw new AppError("Unauthorized", 401, ErrorCode.UNAUTHORIZED)
       }
 
-      let { weather, calendar, closet, preferences } = body
+      let { weather, calendar, closet, preferences, includeAlternatives, alternativesCount } = body
 
       if (!closet || closet.length === 0) {
         closet = await this.contextService.getClosetContext(req.user.id)
@@ -45,6 +45,8 @@ export class RecommendationController {
         calendar,
         closet,
         preferences,
+        includeAlternatives,
+        alternativesCount,
       }
 
       const result = await this.recommendationService.recommendByContext(context)
@@ -65,7 +67,7 @@ export class RecommendationController {
         throw new AppError("Unauthorized", 401, ErrorCode.UNAUTHORIZED)
       }
 
-      let { weather, calendar, closet, preferences, selectedEventType, selectedStyle } = body
+      let { weather, calendar, closet, preferences, selectedEventType, selectedStyle, includeAlternatives, alternativesCount } = body
 
       if (!closet || closet.length === 0) {
         closet = await this.contextService.getClosetContext(req.user.id)
@@ -90,6 +92,8 @@ export class RecommendationController {
         preferences,
         selectedEventType,
         selectedStyle,
+        includeAlternatives,
+        alternativesCount,
       }
 
       const result = await this.recommendationService.recommendBySelection(context)

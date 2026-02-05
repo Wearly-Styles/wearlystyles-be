@@ -9,6 +9,15 @@ export interface LoginDTO {
   password: string
 }
 
+export interface GoogleLoginDTO {
+  idToken: string
+}
+
+export interface GoogleCodeLoginDTO {
+  code: string
+  redirectUri: string
+}
+
 export interface RefreshTokenDTO {
   refreshToken: string
 }

@@ -4,6 +4,8 @@ import userRoutes from "@modules/user/user.route";
 import clothingRoutes from "@modules/clothing/clothing.route";
 import contextRoutes from "@modules/context/context.route";
 import recommendationRoutes from "@modules/recommendation/recommendation.route";
+import outfitPlanRoutes from "@modules/outfit-plan/outfit-plan.route";
+import outfitRoutes from "@modules/outfit/outfit.route";
 
 const router = Router();
 
@@ -22,4 +24,6 @@ router.use("/users", userRoutes);
 router.use("/clothing", clothingRoutes);
 router.use("/context", contextRoutes);
 router.use("/recommendations", recommendationRoutes);
+router.use("/outfit-plans", outfitPlanRoutes);
+router.use("/outfits", outfitRoutes);
 export default router;

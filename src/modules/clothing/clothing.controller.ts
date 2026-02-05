@@ -123,4 +123,20 @@ export class ClothingController {
       next(error);
     }
   }
+
+  async deleteClothingItem(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user as RequestUser;
+      const itemId = Number(req.params.id);
+
+      if (!Number.isFinite(itemId)) {
+        throw new AppError("Invalid item id", 400, ErrorCode.BAD_REQUEST);
+      }
+
+      const result = await this.clothingService.deleteClothingItem(user.id, itemId);
+      res.status(200).json(new SuccessResponse("Clothing item deleted successfully", result, 200));
+    } catch (error) {
+      next(error);
+    }
+  }
 }

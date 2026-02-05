@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from "express"
 import { AuthService } from "./auth.service"
 import { SuccessResponse } from "@common/responses/success.response"
-import type { RegisterDTO, LoginDTO } from "./auth.dto"
+import type { RegisterDTO, LoginDTO, GoogleLoginDTO, GoogleCodeLoginDTO } from "./auth.dto"
 
 export class AuthController {
   private authService = new AuthService()
@@ -21,6 +21,29 @@ export class AuthController {
     try {
       const data: LoginDTO = req.body
       const result = await this.authService.login(data)
+
+      res.json(new SuccessResponse("Login successful", result))
+    } catch (error) {
+      next(error)
+    }
+  }
+
+  async loginWithGoogle(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data: GoogleLoginDTO = req.body
+      const result = await this.authService.loginWithGoogle(data)
+
+      res.json(new SuccessResponse("Login successful", result))
+    } catch (error) {
+      next(error)
+    }
+  }
+
+  async loginWithGoogleCode(req: Request, res: Response, next: NextFunction) {
+    try {
+      console.log("[Auth] login/google-code hit");
+      const data: GoogleCodeLoginDTO = req.body
+      const result = await this.authService.loginWithGoogleCode(data)
 
       res.json(new SuccessResponse("Login successful", result))
     } catch (error) {

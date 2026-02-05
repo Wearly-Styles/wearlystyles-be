@@ -49,6 +49,11 @@ interface IConfig {
   google_oauth_client_secret: string
   gemini_api_key: string
   gemini_model: string
+  gemini_rpm: number
+  gemini_concurrency: number
+  recommendation_cache_ttl_seconds: number
+  recommendation_cache_max: number
+  recommendation_disable_cache: boolean
 }
 
 const config: IConfig = {
@@ -106,6 +111,11 @@ const config: IConfig = {
   google_oauth_client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || "",
   gemini_api_key: process.env.GEMINI_API_KEY || "",
   gemini_model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
+  gemini_rpm: Number.parseInt(process.env.GEMINI_RPM || "60", 10),
+  gemini_concurrency: Number.parseInt(process.env.GEMINI_CONCURRENCY || "2", 10),
+  recommendation_cache_ttl_seconds: Number.parseInt(process.env.RECOMMENDATION_CACHE_TTL_SECONDS || "300", 10),
+  recommendation_cache_max: Number.parseInt(process.env.RECOMMENDATION_CACHE_MAX || "200", 10),
+  recommendation_disable_cache: process.env.RECOMMENDATION_DISABLE_CACHE === "true",
 }
 
 export default config

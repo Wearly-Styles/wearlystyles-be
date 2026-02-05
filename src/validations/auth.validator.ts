@@ -16,6 +16,19 @@ export const loginSchema = z.object({
   }),
 })
 
+export const googleLoginSchema = z.object({
+  body: z.object({
+    idToken: z.string().min(1, "idToken is required"),
+  }),
+})
+
+export const googleCodeLoginSchema = z.object({
+  body: z.object({
+    code: z.string().min(1, "code is required"),
+    redirectUri: z.string().min(1, "redirectUri is required"),
+  }),
+})
+
 export const refreshTokenSchema = z.object({
   body: z.object({
     refreshToken: z.string().min(1, "Refresh token is required"),

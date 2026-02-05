@@ -83,4 +83,34 @@ export class ClothingService {
         },
       });
     }
+
+    async deleteClothingItem(userId: number, itemId: number) {
+      const existing = await this.prisma.clothingItem.findFirst({
+        where: {
+          id: itemId,
+          userId,
+        },
+        select: { id: true, image: true },
+      });
+
+      if (!existing) {
+        throw new AppError("Clothing item not found", 404, ErrorCode.NOT_FOUND);
+      }
+
+      await this.cloudinaryService.deleteFileByUrl(existing.image);
+
+      await this.prisma.$transaction([
+        this.prisma.clothingItemTag.deleteMany({
+          where: { clothingItemId: itemId },
+        }),
+        this.prisma.outfitItem.deleteMany({
+          where: { clothingItemId: itemId },
+        }),
+        this.prisma.clothingItem.delete({
+          where: { id: itemId },
+        }),
+      ]);
+
+      return { id: itemId };
+    }
 }

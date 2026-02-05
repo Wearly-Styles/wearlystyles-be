@@ -52,4 +52,10 @@ router.get(
   clothingController.listTags.bind(clothingController),
 );
 
+router.delete(
+  "/items/:id",
+  authMiddleware,
+  clothingController.deleteClothingItem.bind(clothingController),
+);
+
 export default router;
