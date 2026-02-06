@@ -162,6 +162,17 @@ const options = {
             },
           },
         },
+        GoogleAuthRequest: {
+          type: "object",
+          required: ["authCode"],
+          properties: {
+            authCode: {
+              type: "string",
+              description: "Authorization code from Google",
+              example: "4/0AfJohX...",
+            },
+          },
+        },
         AuthResponse: {
           type: "object",
           properties: {

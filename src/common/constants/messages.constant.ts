@@ -10,6 +10,7 @@ export const MESSAGES = {
   AUTH_UNAUTHORIZED: "Unauthorized access",
   AUTH_TOKEN_EXPIRED: "Token has expired",
   AUTH_TOKEN_INVALID: "Invalid token",
+  AUTH_GOOGLE_FAILED: "Google authentication failed",
 
   // User
   USER_CREATED: "User created successfully",
