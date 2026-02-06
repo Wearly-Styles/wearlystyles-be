@@ -9,6 +9,10 @@ const startServer = async () => {
 
     const app = createApp()
 
+    app.listen(config.port, "0.0.0.0", () => {
+      console.log(`Backend running at 0.0.0.0:${config.port}`);
+    });
+
     app.listen(config.port, () => {
       logger.info(`Server running on port ${config.port}`)
       logger.info(`Environment: ${config.node_env}`)
