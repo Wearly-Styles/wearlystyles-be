@@ -10,10 +10,6 @@ const startServer = async () => {
     const app = createApp();
 
     app.listen(config.port, "0.0.0.0", () => {
-      console.log(`Backend running at 0.0.0.0:${config.port}`);
-    });
-
-    app.listen(config.port, "0.0.0.0", () => {
       logger.info(`Server running on port ${config.port}`);
       logger.info(`Environment: ${config.node_env}`);
       logger.info(`Health: http://0.0.0.0:${config.port}/health`);
