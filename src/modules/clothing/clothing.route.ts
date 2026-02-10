@@ -52,4 +52,22 @@ router.get(
   clothingController.listTags.bind(clothingController),
 );
 
+router.get(
+  "/items",
+  authMiddleware,
+  clothingController.listClothingItems.bind(clothingController),
+);
+
+router.get(
+  "/items/:id",
+  authMiddleware,
+  clothingController.getClothingItemDetail.bind(clothingController),
+);
+
+router.patch(
+  "/items/:id/category",
+  authMiddleware,
+  clothingController.updateClothingItemCategory.bind(clothingController),
+);
+
 export default router;

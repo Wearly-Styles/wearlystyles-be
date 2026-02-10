@@ -4,7 +4,7 @@ import { SuccessResponse } from "@common/responses/success.response";
 import { AppError } from "@common/errors/app-error";
 import { MESSAGES } from "@common/constants/messages.constant";
 import { ErrorCode } from "@common/enums/error-code.enum";
-import { CreateCategoryDTO, CreateClothingItemDTO } from "./clothing.dto";
+import { CreateCategoryDTO, CreateClothingItemDTO, DetailClothingItemDTO } from "./clothing.dto";
 import type { RequestUser } from "@common/interfaces/request-user.interface";
 
 export class ClothingController {
@@ -123,4 +123,75 @@ export class ClothingController {
       next(error);
     }
   }
+
+  async listClothingItems(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user as RequestUser;
+      const query = req.query;
+      const result = await this.clothingService.listClothingItems(
+        user.id,
+        query,
+      );
+      res
+        .status(200)
+        .json(
+          new SuccessResponse("Clothing items retrieved successfully", result, 200),
+        );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async getClothingItemDetail(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  try {
+    const user = req.user as RequestUser;
+
+    const { id } = DetailClothingItemDTO.parse(req.params);
+
+    const result = await this.clothingService.detailClothingItem(
+      user.id,
+      id,
+    );
+
+    res.status(200).json(
+      new SuccessResponse(
+        "Clothing item details retrieved successfully",
+        result,
+        200,
+      ),
+    );
+  } catch (error) {
+    next(error);
+  }
+}
+
+  async updateClothingItemCategory(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const user = req.user as RequestUser;
+      const itemId = Number(req.params.id);
+      const { categoryId } = req.body;
+      const result = await this.clothingService.updateClothingItemCategory(
+        user.id,
+        itemId,
+        categoryId,
+      );
+      res
+        .status(200)
+        .json(
+          new SuccessResponse("Clothing item category updated successfully", result, 200),
+        );
+    }
+    catch (error) {
+      next(error);
+    }
+  }
+
 }
