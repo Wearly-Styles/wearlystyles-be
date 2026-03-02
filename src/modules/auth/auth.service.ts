@@ -96,16 +96,30 @@ export class AuthService {
     return { token }
   }
 
-  async googleAuth(data: GoogleAuthDTO): Promise<{ user: Partial<User>; token: string; refreshToken: string }> {
+  async googleAuth(data: GoogleAuthDTO) {
     try {
-      const { tokens } = await googleClient.getToken(data.authCode);
+      let payload;
 
-      const ticket = await googleClient.verifyIdToken({
-        idToken: tokens.id_token!,
-        audience: config.google.clientId,
-      });
+      if (data.idToken) {
+        const ticket = await googleClient.verifyIdToken({
+          idToken: data.idToken,
+          audience: config.google.clientId,
+        });
 
-      const payload = ticket.getPayload();
+        payload = ticket.getPayload();
+      }
+
+      else if (data.authCode) {
+        const { tokens } = await googleClient.getToken(data.authCode);
+
+        const ticket = await googleClient.verifyIdToken({
+          idToken: tokens.id_token!,
+          audience: config.google.clientId,
+        });
+
+        payload = ticket.getPayload();
+      }
+
       if (!payload || !payload.email) {
         throw new AuthError(MESSAGES.AUTH_GOOGLE_FAILED);
       }
@@ -139,7 +153,7 @@ export class AuthService {
         refreshToken,
       };
     } catch (error) {
-      console.error("Google Auth Error Detail:", error); // Log chi tiết để debug
+      console.error("Google Auth Error Detail:", error);
       throw new AuthError(MESSAGES.AUTH_GOOGLE_FAILED);
     }
   }

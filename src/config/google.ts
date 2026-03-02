@@ -4,7 +4,7 @@ import config from './env';
 const googleClient = new OAuth2Client(
   config.google.clientId,
   config.google.clientSecret,
-  'https://developers.google.com/oauthplayground'
+  'https://auth.expo.io/@kimm000/WearlyStyles'
 );
 
 export { googleClient };

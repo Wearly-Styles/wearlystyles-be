@@ -5,7 +5,8 @@ export interface RegisterDTO {
 }
 
 export interface GoogleAuthDTO {
-  authCode: string
+  authCode?: string,
+  idToken?: string,
 }
 export interface LoginDTO {
   email: string
