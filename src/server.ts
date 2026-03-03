@@ -9,10 +9,10 @@ const startServer = async () => {
 
     const app = createApp()
 
-    app.listen(config.port, () => {
+    app.listen(config.port, "0.0.0.0", () => {
       logger.info(`Server running on port ${config.port}`)
       logger.info(`Environment: ${config.node_env}`)
-      logger.info(`Visit http://localhost:${config.port}/health`)
+      logger.info(`Health: http://0.0.0.0:${config.port}/health`)
       logger.info(`API Documentation: http://localhost:${config.port}/api-docs`)
     })
   } catch (error) {
