@@ -4,7 +4,7 @@ import { SuccessResponse } from "@common/responses/success.response";
 import { AppError } from "@common/errors/app-error";
 import { MESSAGES } from "@common/constants/messages.constant";
 import { ErrorCode } from "@common/enums/error-code.enum";
-import { CreateCategoryDTO, CreateClothingItemDTO } from "./clothing.dto";
+import { CreateCategoryDTO, CreateClothingItemDTO, UpdateClothingItemDTO } from "./clothing.dto";
 import type { RequestUser } from "@common/interfaces/request-user.interface";
 
 export class ClothingController {
@@ -67,7 +67,7 @@ export class ClothingController {
         );
     } catch (error) {
       next(error);
-    } 
+    }
   }
 
   async createTag(req: Request, res: Response, next: NextFunction) {
@@ -85,7 +85,7 @@ export class ClothingController {
         );
     } catch (error) {
       next(error);
-    } 
+    }
   }
 
   async listCategories(req: Request, res: Response, next: NextFunction) {
@@ -103,12 +103,12 @@ export class ClothingController {
         );
     } catch (error) {
       next(error);
-    } 
+    }
   }
 
   async listTags(req: Request, res: Response, next: NextFunction) {
     try {
-      const user = req.user as RequestUser; 
+      const user = req.user as RequestUser;
       const { search } = req.query as { search?: string };
       const result = await this.clothingService.listTags(
         user.id,
@@ -119,6 +119,54 @@ export class ClothingController {
         .json(
           new SuccessResponse("Tags retrieved successfully", result, 200),
         );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async updateClothingItem(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const user = req.user as RequestUser;
+      const itemId = Number(req.params.id);
+
+      if (!Number.isFinite(itemId)) {
+        throw new AppError(
+          "Invalid item id",
+          400,
+          ErrorCode.BAD_REQUEST,
+        );
+      }
+
+      const data = UpdateClothingItemDTO.parse(req.body);
+      const file = req.file;
+
+      // Không cho update rỗng
+      if (!file && Object.keys(data).length === 0) {
+        throw new AppError(
+          "No data provided for update",
+          400,
+          ErrorCode.BAD_REQUEST,
+        );
+      }
+
+      const result = await this.clothingService.updateClothingItem(
+        user.id,
+        itemId,
+        data,
+        file,
+      );
+
+      res.status(200).json(
+        new SuccessResponse(
+          "Clothing item updated successfully",
+          result,
+          200,
+        ),
+      );
     } catch (error) {
       next(error);
     }

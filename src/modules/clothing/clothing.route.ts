@@ -52,6 +52,13 @@ router.get(
   clothingController.listTags.bind(clothingController),
 );
 
+router.patch(
+  "/items/:id",
+  authMiddleware,
+  upload.single("image"),
+  clothingController.updateClothingItem.bind(clothingController),
+);
+
 router.delete(
   "/items/:id",
   authMiddleware,
