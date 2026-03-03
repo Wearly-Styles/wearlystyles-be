@@ -7,6 +7,8 @@ interface IConfig {
   port: number
   app_name: string
   database_url: string
+  frontend_url: string
+
   database: {
     host: string
     port: number
@@ -16,15 +18,24 @@ interface IConfig {
     synchronize: boolean
     logging: boolean
   }
+
   jwt: {
     secret: string
     expiresIn: string
     refreshSecret: string
     refreshExpiresIn: string
   }
+
+  google: {
+    clientId: string
+    clientSecret: string
+    redirectUri: string
+  }
+
   log: {
     level: string
   }
+
   email: {
     smtpHost: string
     smtpPort: number
@@ -32,25 +43,29 @@ interface IConfig {
     pass: string
     fromEmail: string
   }
+
   redis: {
     url: string
   }
+
   swagger: {
     enabled: boolean
     apiVersion: string
   }
+
   cloudinary: {
     cloudName: string
     apiKey: string
     apiSecret: string
   }
+
   openweather_api_key: string
-  google_oauth_client_id: string
-  google_oauth_client_secret: string
+
   gemini_api_key: string
   gemini_model: string
   gemini_rpm: number
   gemini_concurrency: number
+
   recommendation_cache_ttl_seconds: number
   recommendation_cache_max: number
   recommendation_disable_cache: boolean
@@ -61,6 +76,7 @@ const config: IConfig = {
   port: Number.parseInt(process.env.PORT || "3000", 10),
   app_name: process.env.APP_NAME || "wearly-styles-be",
   database_url: process.env.DATABASE_URL || "",
+  frontend_url: process.env.FRONTEND_URL || "http://localhost:3000",
 
   database: {
     host: process.env.DB_HOST || "localhost",
@@ -77,6 +93,12 @@ const config: IConfig = {
     expiresIn: process.env.JWT_EXPIRES_IN || "24h",
     refreshSecret: process.env.JWT_REFRESH_SECRET || "default-refresh-secret",
     refreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || "7d",
+  },
+
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID || process.env.GOOGLE_OAUTH_CLIENT_ID || "",
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_OAUTH_CLIENT_SECRET || "",
+    redirectUri: process.env.GOOGLE_CALLBACK_URL || "postmessage",
   },
 
   log: {
@@ -107,15 +129,19 @@ const config: IConfig = {
   },
 
   openweather_api_key: process.env.OPENWEATHER_API_KEY || "",
-  google_oauth_client_id: process.env.GOOGLE_OAUTH_CLIENT_ID || "",
-  google_oauth_client_secret: process.env.GOOGLE_OAUTH_CLIENT_SECRET || "",
+
   gemini_api_key: process.env.GEMINI_API_KEY || "",
   gemini_model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
   gemini_rpm: Number.parseInt(process.env.GEMINI_RPM || "60", 10),
   gemini_concurrency: Number.parseInt(process.env.GEMINI_CONCURRENCY || "2", 10),
+
   recommendation_cache_ttl_seconds: Number.parseInt(process.env.RECOMMENDATION_CACHE_TTL_SECONDS || "300", 10),
   recommendation_cache_max: Number.parseInt(process.env.RECOMMENDATION_CACHE_MAX || "200", 10),
   recommendation_disable_cache: process.env.RECOMMENDATION_DISABLE_CACHE === "true",
+}
+
+if (!config.google.clientId || !config.google.clientSecret) {
+  console.warn("⚠️  CẢNH BÁO: GOOGLE_CLIENT_ID hoặc GOOGLE_CLIENT_SECRET chưa được cấu hình trong .env")
 }
 
 export default config
