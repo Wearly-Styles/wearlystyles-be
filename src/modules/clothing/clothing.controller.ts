@@ -124,6 +124,40 @@ export class ClothingController {
     }
   }
 
+  async getClothingItemById(
+    req: Request,
+    res: Response,
+    next: NextFunction,
+  ) {
+    try {
+      const user = req.user as RequestUser;
+      const itemId = Number(req.params.id);
+
+      if (!Number.isFinite(itemId)) {
+        throw new AppError(
+          "Invalid item id",
+          400,
+          ErrorCode.BAD_REQUEST,
+        );
+      }
+
+      const result = await this.clothingService.getClothingItemById(
+        user.id,
+        itemId,
+      );
+
+      res.status(200).json(
+        new SuccessResponse(
+          "Clothing item retrieved successfully",
+          result,
+          200,
+        ),
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
   async updateClothingItem(
     req: Request,
     res: Response,

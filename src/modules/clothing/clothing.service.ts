@@ -84,6 +84,45 @@ export class ClothingService {
     });
   }
 
+  async getClothingItemById(userId: number, itemId: number) {
+    const item = await this.prisma.clothingItem.findFirst({
+      where: {
+        id: itemId,
+        userId,
+      },
+      include: {
+        category: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    if (!item) {
+      throw new AppError(
+        "Clothing item not found",
+        404,
+        ErrorCode.NOT_FOUND,
+      );
+    }
+
+    return {
+      id: item.id,
+      name: item.name,
+      image: item.image,
+      color: item.color,
+      material: item.material,
+      description: item.description,
+      season: item.season,
+      isFavorite: item.isFavorite,
+
+      categoryId: item.categoryId,
+      category: item.category,
+    };
+  }
+
   async updateClothingItem(
     userId: number,
     itemId: number,
