@@ -58,3 +58,9 @@ export const listTagsDTO = z.object({
 });
 
 export type CreateClothingItemDTO = z.infer<typeof CreateClothingItemDTO>;
+
+export const UpdateClothingItemDTO = CreateClothingItemDTO.partial();
+
+export type UpdateClothingItemDTO = z.infer<
+  typeof UpdateClothingItemDTO
+>;
