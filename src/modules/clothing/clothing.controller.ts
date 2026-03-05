@@ -130,8 +130,9 @@ export class ClothingController {
     next: NextFunction,
   ) {
     try {
-      const user = req.user as RequestUser;
       const itemId = Number(req.params.id);
+      const user = req.user as { id: number };
+      const userId = user.id;
 
       if (!Number.isFinite(itemId)) {
         throw new AppError(
@@ -141,10 +142,7 @@ export class ClothingController {
         );
       }
 
-      const result = await this.clothingService.getClothingItemById(
-        user.id,
-        itemId,
-      );
+      const result = await this.clothingService.getClothingItemById(itemId, userId);
 
       res.status(200).json(
         new SuccessResponse(
