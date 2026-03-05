@@ -2,8 +2,10 @@ import config from "@config/env"
 import logger from "@config/logger"
 import { AppError } from "@common/errors/app-error"
 import { ErrorCode } from "@common/enums/error-code.enum"
+import { MESSAGES } from "@common/constants/messages.constant"
 import type { RecommendationContextDTO, RecommendationResponse, OutfitRecommendation } from "./recommendation.dto"
 import { getTimeOfDay, mapDressCode, mapEventType } from "@helpers/context.helper"
+import { createHash } from "crypto"
 
 type GeminiResponse = {
   candidates?: Array<{
@@ -110,7 +112,7 @@ export class RecommendationService {
         properties: {
           eventType: { type: "string" },
           style: { type: "string" },
-          items: { type: "array", items: { type: "number" } },
+          items: { type: "array", items: { type: "number" }, uniqueItems: true, maxItems: 6 },
           notes: { type: "array", items: { type: "string" } },
           missingItems: {
             type: "array",
@@ -132,11 +134,11 @@ export class RecommendationService {
         items: {
           type: "object",
           properties: {
-            eventType: { type: "string" },
-            style: { type: "string" },
-            items: { type: "array", items: { type: "number" } },
-            notes: { type: "array", items: { type: "string" } },
-            missingItems: {
+             eventType: { type: "string" },
+             style: { type: "string" },
+            items: { type: "array", items: { type: "number" }, uniqueItems: true, maxItems: 6 },
+             notes: { type: "array", items: { type: "string" } },
+             missingItems: {
               type: "array",
               items: {
                 type: "object",
@@ -167,7 +169,7 @@ export class RecommendationService {
             eventTitle: { type: "string" },
             eventType: { type: "string" },
             style: { type: "string" },
-            items: { type: "array", items: { type: "number" } },
+            items: { type: "array", items: { type: "number" }, uniqueItems: true, maxItems: 6 },
             notes: { type: "array", items: { type: "string" } },
             missingItems: {
               type: "array",
@@ -198,13 +200,15 @@ export class RecommendationService {
   private static readonly ITEMS_RESPONSE_SCHEMA = {
     type: "object",
     properties: {
-      items: { type: "array", items: { type: "number" } },
+      items: { type: "array", items: { type: "number" }, uniqueItems: true, maxItems: 6 },
     },
     required: ["items"],
   }
   private static readonly PREFILTER_THRESHOLD = 160
   private static readonly PREFILTER_LIMIT = 120
   private static readonly MAX_ALTERNATIVES = 3
+  private static readonly MIN_OUTFIT_ITEMS = 3
+  private static readonly MAX_OUTFIT_ITEMS = 6
   private static readonly MIN_SUITABLE_ITEMS = 3
   private static readonly SUITABLE_SCORE_THRESHOLD = 2
   private static readonly CATEGORY_LIMITS: Record<string, number> = {
@@ -214,7 +218,12 @@ export class RecommendationService {
   }
 
   private normalizeText(value?: string | null): string {
-    return (value || "").toLowerCase()
+    // Make keyword matching more robust across languages (e.g. Vietnamese diacritics).
+    return (value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/\u0111/g, "d")
   }
 
   private buildItemText(item: RecommendationContextDTO["closet"][number]): string {
@@ -327,13 +336,52 @@ export class RecommendationService {
     const text = this.buildItemText(item)
     const hasAny = (keywords: string[]) => keywords.some((keyword) => text.includes(keyword))
 
-    if (hasAny(["shoe", "sneaker", "boot", "heel", "sandal", "loafer", "flat", "oxford", "trainer"])) {
+    if (
+      hasAny([
+        "shoe",
+        "sneaker",
+        "boot",
+        "heel",
+        "sandal",
+        "loafer",
+        "flat",
+        "oxford",
+        "trainer",
+        // Vietnamese (diacritics stripped by normalizeText)
+        "giay",
+        "dep",
+        "cao got",
+      ])
+    ) {
       return "footwear"
     }
-    if (hasAny(["coat", "jacket", "blazer", "parka", "trench", "cardigan", "vest"])) {
+    if (
+      hasAny([
+        "coat",
+        "jacket",
+        "blazer",
+        "parka",
+        "trench",
+        "cardigan",
+        "vest",
+        // Vietnamese (diacritics stripped by normalizeText)
+        "ao khoac",
+        "khoac",
+      ])
+    ) {
       return "outerwear"
     }
-    if (hasAny(["dress", "jumpsuit", "romper"])) {
+    if (
+      hasAny([
+        "dress",
+        "jumpsuit",
+        "romper",
+        // Vietnamese (diacritics stripped by normalizeText)
+        "dam",
+        "vay",
+        "ao dai",
+      ])
+    ) {
       return "onepiece"
     }
     return null
@@ -390,6 +438,107 @@ export class RecommendationService {
     return filtered
   }
 
+  private ensureOutfitItemIds(
+    ids: number[],
+    closet: RecommendationContextDTO["closet"],
+    context: RecommendationContextDTO,
+  ): number[] {
+    const closetById = new Map<number, RecommendationContextDTO["closet"][number]>()
+    closet.forEach((item) => closetById.set(item.id, item))
+
+    const uniqueIds = Array.from(new Set(ids)).filter((id) => Number.isFinite(id))
+    const usedCategoryIds = new Set<number>()
+    const usedGroupCounts: Record<string, number> = {}
+
+    let result = this.enforceCategoryLimits(uniqueIds, closet, context)
+
+    // Enforce uniqueness by DB categoryId within an outfit.
+    const dedupedByCategory: number[] = []
+    for (const id of result) {
+      const item = closetById.get(id)
+      if (!item) continue
+
+      const categoryId = item.categoryId
+      if (typeof categoryId === "number") {
+        if (usedCategoryIds.has(categoryId)) continue
+        usedCategoryIds.add(categoryId)
+      }
+
+      dedupedByCategory.push(id)
+
+      const group = this.getItemGroup(item)
+      if (group) {
+        usedGroupCounts[group] = (usedGroupCounts[group] || 0) + 1
+      }
+    }
+    result = dedupedByCategory
+
+    // Gemini may return too many ids; keep response stable.
+    if (result.length > RecommendationService.MAX_OUTFIT_ITEMS) {
+      result = result.slice(0, RecommendationService.MAX_OUTFIT_ITEMS)
+    }
+
+    if (result.length >= RecommendationService.MIN_OUTFIT_ITEMS) return result
+
+    const selected = new Set<number>(result)
+    const rankedCandidates = closet
+      .filter((item) => !selected.has(item.id))
+      .map((item, index) => ({ item, index, score: this.scoreClosetItem(item, context) }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score
+        return a.index - b.index
+      })
+
+    const canAdd = (item: RecommendationContextDTO["closet"][number]) => {
+      if (selected.has(item.id)) return false
+
+      const categoryId = item.categoryId
+      if (typeof categoryId === "number" && usedCategoryIds.has(categoryId)) return false
+
+      const group = this.getItemGroup(item)
+      const limit = group ? RecommendationService.CATEGORY_LIMITS[group] : undefined
+      if (group && typeof limit === "number") {
+        const count = usedGroupCounts[group] || 0
+        if (count >= limit) return false
+      }
+      return true
+    }
+
+    const add = (item: RecommendationContextDTO["closet"][number]) => {
+      if (!canAdd(item)) return false
+
+      const categoryId = item.categoryId
+      if (typeof categoryId === "number") {
+        usedCategoryIds.add(categoryId)
+      }
+
+      const group = this.getItemGroup(item)
+      const limit = group ? RecommendationService.CATEGORY_LIMITS[group] : undefined
+      if (group && typeof limit === "number") {
+        usedGroupCounts[group] = (usedGroupCounts[group] || 0) + 1
+      }
+      result.push(item.id)
+      selected.add(item.id)
+      return true
+    }
+
+    // Prefer adding footwear if it's missing, so the outfit is closer to "complete".
+    const footwearLimit = RecommendationService.CATEGORY_LIMITS["footwear"]
+    if (typeof footwearLimit === "number" && (usedGroupCounts["footwear"] || 0) < footwearLimit) {
+      const footwearCandidate = rankedCandidates.find((c) => this.getItemGroup(c.item) === "footwear")
+      if (footwearCandidate) {
+        add(footwearCandidate.item)
+      }
+    }
+
+    for (const candidate of rankedCandidates) {
+      if (result.length >= RecommendationService.MIN_OUTFIT_ITEMS) break
+      add(candidate.item)
+    }
+
+    return result
+  }
+
   private buildOutfitName(eventType?: string, style?: string) {
     const safeEvent = eventType?.replace(/_/g, " ") || "outfit"
     const safeStyle = style?.replace(/_/g, " ")
@@ -408,8 +557,13 @@ export class RecommendationService {
   private compactCloset(items: RecommendationContextDTO["closet"]) {
     return items.map((item) => ({
       id: item.id,
+      name: item.name,
+      categoryId: item.categoryId,
       category: item.category,
       color: item.color,
+      season: item.season,
+      material: item.material,
+      isFavorite: item.isFavorite,
       tags: (item.tags || []).slice(0, RecommendationService.MAX_TAGS_PER_ITEM),
     }))
   }
@@ -425,10 +579,19 @@ export class RecommendationService {
   private async fetchWithRetry(url: string, payload: unknown) {
     let lastResponse: Response | null = null
     let lastError: Error | null = null
+    const computeDelay = (attempt: number) =>
+      RecommendationService.RETRY_BASE_MS * Math.pow(2, attempt) + Math.floor(Math.random() * 200)
+
     for (let attempt = 0; attempt < RecommendationService.RETRY_LIMIT; attempt += 1) {
+      let shouldRetry = false
+      let retryMessage = ""
+
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), RecommendationService.REQUEST_TIMEOUT_MS)
+      let releaseLimiter: (() => void) | null = null
       try {
+        releaseLimiter = await RecommendationService.GEMINI_LIMITER.acquire()
+
         const response = await fetch(url, {
           method: "POST",
           headers: {
@@ -441,37 +604,37 @@ export class RecommendationService {
         if (response.ok) return response
 
         if (response.status === 429 || response.status === 503) {
-          const delay =
-            RecommendationService.RETRY_BASE_MS * Math.pow(2, attempt) +
-            Math.floor(Math.random() * 200)
-          logger.warn(`Gemini rate limit (${response.status}). Retrying in ${delay}ms...`)
-          await new Promise((resolve) => setTimeout(resolve, delay))
           lastResponse = response
-          continue
+          shouldRetry = true
+          retryMessage = `Gemini rate limit (${response.status})`
+        } else {
+          return response
         }
-
-        return response
       } catch (error) {
         lastError = error as Error
-        const delay =
-          RecommendationService.RETRY_BASE_MS * Math.pow(2, attempt) +
-          Math.floor(Math.random() * 200)
-        logger.warn(`Gemini request failed (${lastError.message}). Retrying in ${delay}ms...`)
-        await new Promise((resolve) => setTimeout(resolve, delay))
+        shouldRetry = true
+        retryMessage = `Gemini request failed (${lastError.message})`
       } finally {
         clearTimeout(timeoutId)
+        if (releaseLimiter) releaseLimiter()
+      }
+
+      if (shouldRetry && attempt < RecommendationService.RETRY_LIMIT - 1) {
+        const delay = computeDelay(attempt)
+        logger.warn(`${retryMessage}. Retrying in ${delay}ms...`)
+        await new Promise((resolve) => setTimeout(resolve, delay))
       }
     }
 
     if (lastResponse) {
-      throw new AppError("Failed to generate outfit recommendation", lastResponse.status, ErrorCode.SERVICE_UNAVAILABLE)
+      throw new AppError(MESSAGES.RECOMMENDATION_FAILED, lastResponse.status, ErrorCode.SERVICE_UNAVAILABLE)
     }
 
     if (lastError) {
-      throw new AppError("Failed to generate outfit recommendation", 503, ErrorCode.SERVICE_UNAVAILABLE)
+      throw new AppError(MESSAGES.RECOMMENDATION_FAILED, 503, ErrorCode.SERVICE_UNAVAILABLE)
     }
 
-    throw new AppError("Failed to generate outfit recommendation", 503, ErrorCode.SERVICE_UNAVAILABLE)
+    throw new AppError(MESSAGES.RECOMMENDATION_FAILED, 503, ErrorCode.SERVICE_UNAVAILABLE)
   }
 
   private buildSafeContext(context: RecommendationContextDTO): RecommendationContextDTO {
@@ -535,8 +698,56 @@ export class RecommendationService {
     const fullCloset = safeContext.closet
     const workingCloset = this.prefilterCloset(fullCloset, safeContext)
     const workingContext: RecommendationContextDTO = { ...safeContext, closet: workingCloset }
-    const closetIds = new Set(workingContext.closet.map((item) => item.id))
+    const closetIds = new Set(fullCloset.map((item) => item.id))
     const hasInputCalendar = Array.isArray(context.calendar) && context.calendar.length > 0
+
+    const toPromptContext = (ctx: RecommendationContextDTO): RecommendationContextDTO => ({
+      ...ctx,
+      closet: this.compactCloset(ctx.closet),
+    })
+
+    const shouldUseCache =
+      !RecommendationService.DISABLE_CACHE &&
+      RecommendationService.CACHE_TTL_MS > 0 &&
+      RecommendationService.CACHE_MAX > 0
+
+    const cacheKey = shouldUseCache
+      ? createHash("sha256")
+          .update(JSON.stringify({ model, context: toPromptContext(workingContext) }))
+          .digest("hex")
+      : null
+
+    if (cacheKey) {
+      const cached = RecommendationService.CACHE.get(cacheKey)
+      if (cached) {
+        if (cached.expiresAt > Date.now()) {
+          return cached.value
+        }
+        RecommendationService.CACHE.delete(cacheKey)
+      }
+    }
+
+    const setCache = (value: RecommendationResponse) => {
+      if (!cacheKey) return
+      const now = Date.now()
+
+      for (const [key, entry] of RecommendationService.CACHE) {
+        if (entry.expiresAt <= now) {
+          RecommendationService.CACHE.delete(key)
+        }
+      }
+
+      while (RecommendationService.CACHE.size >= RecommendationService.CACHE_MAX) {
+        const oldestKey = RecommendationService.CACHE.keys().next().value as string | undefined
+        if (!oldestKey) break
+        RecommendationService.CACHE.delete(oldestKey)
+      }
+
+      RecommendationService.CACHE.set(cacheKey, {
+        expiresAt: now + RecommendationService.CACHE_TTL_MS,
+        value,
+      })
+    }
     const buildFallbackItems = () => {
       const favorites = fullCloset
         .filter((item) => item.isFavorite)
@@ -553,7 +764,7 @@ export class RecommendationService {
     }
     const fallbackItems = buildFallbackItems()
     if (fullCloset.length > 0 && fallbackItems.length === 0) {
-      throw new AppError("Closet item ids are invalid", 400, ErrorCode.BAD_REQUEST)
+      throw new AppError(MESSAGES.CLOSET_ITEM_IDS_INVALID, 400, ErrorCode.BAD_REQUEST)
     }
 
     const includeAlternatives = Boolean(workingContext.includeAlternatives)
@@ -582,27 +793,53 @@ export class RecommendationService {
 
     if (!apiKey) {
       logger.error("Recommendation fallback: Gemini API key is missing")
-      return buildFallbackResponse("Gemini API key is missing")
+
+      const items = this.enforceCategoryLimits(fallbackItems, fullCloset, workingContext)
+      const eventType = workingContext.selectedEventType
+      const style = workingContext.selectedStyle
+      const primary: OutfitRecommendation = {
+        outfit: {
+          name: this.buildOutfitName(eventType, style),
+          items: this.buildOutfitItems(items, fullCloset),
+        },
+        eventTitle: "general",
+        eventType,
+        style,
+        items,
+        notes: items.length
+          ? ["Fallback recommendation (Gemini API key is missing)."]
+          : ["No recommendation generated. Provide more context or closet items."],
+        missingItems: [],
+      }
+
+      return {
+        primary,
+        alternatives: [],
+        recommendations: [primary],
+        model,
+      }
     }
 
     const basePrompt = [
       "You are a wardrobe stylist.",
       "Task: pick the best outfit for the selected event type and fashion style.",
       "Use only item IDs from the provided closet.",
+      "Pick 3-6 item IDs per outfit and never repeat the same item id within one outfit.",
+      "Do not pick two items with the same categoryId within one outfit.",
       "Outfit must match the chosen style and event, and colors should be harmonious.",
       "Do NOT propose items that do not exist.",
       "If the closet lacks key pieces, add up to 6 missingItems inside each outfit (name, category, reason).",
       "Return ONLY minified JSON with no markdown or extra text.",
       "Never include any prefix/suffix text.",
       includeAlternatives
-        ? `Return a primary outfit and up to ${Math.max(1, alternativesCount)} alternatives.`
+        ? `Return a primary outfit and up to ${Math.max(1, alternativesCount)} alternatives. Each alternative must differ from the primary by at least 1 item id, and alternatives must be distinct from each other.`
         : "Return only a primary outfit; alternatives must be an empty array.",
       "Keep notes concise (max 2 short sentences).",
     ].join(" ")
 
     const responseShape = includeAlternatives
-      ? '{ "primary": { "eventType": "", "style": "", "items": [1,2], "notes": ["..."], "missingItems": [{ "name": "", "category": "", "reason": "" }] }, "alternatives": [{ "eventType": "", "style": "", "items": [1,2], "notes": ["..."], "missingItems": [{ "name": "", "category": "", "reason": "" }] }] }'
-      : '{ "primary": { "eventType": "", "style": "", "items": [1,2], "notes": ["..."], "missingItems": [{ "name": "", "category": "", "reason": "" }] }, "alternatives": [] }'
+      ? '{ "primary": { "eventType": "", "style": "", "items": [1,2,3,4], "notes": ["..."], "missingItems": [{ "name": "", "category": "", "reason": "" }] }, "alternatives": [{ "eventType": "", "style": "", "items": [1,2,3,4], "notes": ["..."], "missingItems": [{ "name": "", "category": "", "reason": "" }] }] }'
+      : '{ "primary": { "eventType": "", "style": "", "items": [1,2,3,4], "notes": ["..."], "missingItems": [{ "name": "", "category": "", "reason": "" }] }, "alternatives": [] }'
 
     const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
     const buildRequestBody = (maxOutputTokens: number) => ({
@@ -612,7 +849,7 @@ export class RecommendationService {
           parts: [
             {
               text: `${basePrompt}\n\nReturn JSON with shape: ${responseShape}\n\nContext:\n${JSON.stringify(
-                workingContext,
+                toPromptContext(workingContext),
               )}`,
             },
           ],
@@ -634,7 +871,7 @@ export class RecommendationService {
           parts: [
             {
               text: `${basePrompt}\nReturn ONLY minified JSON. No prose, no code fences.\nReturn JSON with shape: ${responseShape}\nContext:\n${JSON.stringify(
-                contextForPrompt,
+                toPromptContext(contextForPrompt),
               )}`,
             },
           ],
@@ -744,8 +981,8 @@ export class RecommendationService {
         .filter((id) => Number.isFinite(id))
         .filter((id) => closetIds.has(id))
       const uniqueItems = Array.from(new Set(rawItems))
-      const adjustedItems = this.enforceCategoryLimits(uniqueItems, workingContext.closet, workingContext)
-      const outfitItems = this.buildOutfitItems(adjustedItems, workingContext.closet)
+      const adjustedItems = this.ensureOutfitItemIds(uniqueItems, fullCloset, workingContext)
+      const outfitItems = this.buildOutfitItems(adjustedItems, fullCloset)
       const eventType = rec?.eventType || workingContext.selectedEventType
       const style = rec?.style || workingContext.selectedStyle
       return {
@@ -816,7 +1053,7 @@ export class RecommendationService {
         "Return ONLY minified JSON: { \"items\": [1,2,3,4] }",
         "Pick 3-6 items that best fit the event/style.",
         "Context:",
-        JSON.stringify(contextForPrompt),
+        JSON.stringify(toPromptContext(contextForPrompt)),
       ].join("\n")
 
       const itemsResponse = await this.fetchWithRetry(endpoint, {
@@ -921,23 +1158,25 @@ export class RecommendationService {
     try {
       const calendarEvents = workingContext.calendar || []
       if (hasInputCalendar && calendarEvents.length > 0) {
-        const batchPrompt = [
-        "You are a wardrobe stylist.",
-        "Task: for each calendar event, pick the best outfit for the event type and dress code.",
-        "Use only item IDs from the provided closet.",
-        "Outfits must match the event and colors should be harmonious.",
-        "Do NOT propose items that do not exist.",
-        "If the closet lacks key pieces, add up to 6 missingItems inside each outfit (name, category, reason).",
-        "Return ONLY minified JSON with no markdown or extra text.",
-        "Never include any prefix/suffix text.",
+         const batchPrompt = [
+         "You are a wardrobe stylist.",
+         "Task: for each calendar event, pick the best outfit for the event type and dress code.",
+         "Use only item IDs from the provided closet.",
+         "Pick 3-6 item IDs per outfit and never repeat the same item id within one outfit.",
+         "Do not pick two items with the same categoryId within one outfit.",
+         "Outfits must match the event and colors should be harmonious.",
+         "Do NOT propose items that do not exist.",
+         "If the closet lacks key pieces, add up to 6 missingItems inside each outfit (name, category, reason).",
+         "Return ONLY minified JSON with no markdown or extra text.",
+         "Never include any prefix/suffix text.",
         "Return exactly one recommendation per calendar event, in the same order as provided.",
         "Include eventId and eventTitle for each recommendation if available.",
         "Use event.eventType and event.dressCode when present; otherwise use context.selectedEventType/style.",
         "Keep notes concise (max 2 short sentences).",
       ].join(" ")
-
-        const batchResponseShape =
-        '{ "recommendations": [ { "eventId": "", "eventTitle": "", "eventType": "", "style": "", "items": [1,2], "notes": ["..."], "missingItems": [{ "name": "", "category": "", "reason": "" }] } ] }'
+ 
+         const batchResponseShape =
+         '{ "recommendations": [ { "eventId": "", "eventTitle": "", "eventType": "", "style": "", "items": [1,2,3,4], "notes": ["..."], "missingItems": [{ "name": "", "category": "", "reason": "" }] } ] }'
 
         const batchContext: RecommendationContextDTO = {
         ...workingContext,
@@ -1034,12 +1273,15 @@ export class RecommendationService {
         notes: ["Generated with fallback selection."],
         })
 
-        return {
-        primary,
-        alternatives: [],
-        recommendations: perEventRecommendations,
-        model,
+        const result = {
+          primary,
+          alternatives: [],
+          recommendations: perEventRecommendations,
+          model,
         }
+
+        setCache(result)
+        return result
       }
 
       const seedItems = await requestItemsOnly(fullContext)
@@ -1101,12 +1343,15 @@ export class RecommendationService {
           })
         }
 
-        return {
+        const result = {
           primary,
           alternatives: [],
           recommendations: [],
           model,
         }
+
+        setCache(result)
+        return result
       }
 
     if (
@@ -1144,7 +1389,7 @@ export class RecommendationService {
         })
 
         if (!resp.ok) {
-          throw new AppError("Failed to generate outfit recommendation", resp.status, ErrorCode.SERVICE_UNAVAILABLE)
+          throw new AppError(MESSAGES.RECOMMENDATION_FAILED, resp.status, ErrorCode.SERVICE_UNAVAILABLE)
         }
 
         const raw = await parseGeminiResponse(resp)
@@ -1186,7 +1431,7 @@ export class RecommendationService {
       })
 
       if (!response.ok) {
-        throw new AppError("Failed to generate outfit recommendation", response.status, ErrorCode.SERVICE_UNAVAILABLE)
+        throw new AppError(MESSAGES.RECOMMENDATION_FAILED, response.status, ErrorCode.SERVICE_UNAVAILABLE)
       }
 
       let content = await parseGeminiResponse(response)
@@ -1202,7 +1447,7 @@ export class RecommendationService {
       const response = await this.fetchWithRetry(endpoint, buildRequestBody(320))
 
       if (!response.ok) {
-        throw new AppError("Failed to generate outfit recommendation", response.status, ErrorCode.SERVICE_UNAVAILABLE)
+        throw new AppError(MESSAGES.RECOMMENDATION_FAILED, response.status, ErrorCode.SERVICE_UNAVAILABLE)
       }
 
       let content = await parseGeminiResponse(response)
@@ -1355,18 +1600,39 @@ export class RecommendationService {
         parsed.recommendations?.slice(1).map((rec) => normalize(rec)) ||
         []
       : []
-    const alternatives = includeAlternatives
-      ? rawAlternatives.slice(0, Math.max(1, alternativesCount || RecommendationService.MAX_ALTERNATIVES))
-      : []
+
+    const itemsKey = (ids: number[]) => ids.slice().sort((a, b) => a - b).join(",")
+    const desiredAlternatives = Math.max(1, alternativesCount || RecommendationService.MAX_ALTERNATIVES)
+
+    const alternatives = (() => {
+      if (!includeAlternatives) return []
+      const primaryKey = itemsKey(primary.items)
+      const seen = new Set<string>([primaryKey])
+      const unique: OutfitRecommendation[] = []
+
+      for (const alt of rawAlternatives) {
+        if (!alt.items.length) continue
+        const key = itemsKey(alt.items)
+        if (seen.has(key)) continue
+        seen.add(key)
+        unique.push(alt)
+        if (unique.length >= desiredAlternatives) break
+      }
+
+      return unique
+    })()
 
     const recommendations: OutfitRecommendation[] = [primary, ...alternatives]
 
-      return {
+      const result = {
         primary,
         alternatives,
         recommendations,
         model,
       }
+
+      setCache(result)
+      return result
     } catch (error) {
       const message = error instanceof Error ? error.message : "AI unavailable"
       logger.error(`Recommendation fallback: ${message}`)

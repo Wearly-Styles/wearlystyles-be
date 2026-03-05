@@ -21,7 +21,7 @@ export class UserController {
       const data: CreateUserDTO = req.body
       const result = await this.userService.createUser(data)
 
-      res.status(201).json(new SuccessResponse("User created successfully", result, 201))
+      res.status(201).json(new SuccessResponse(MESSAGES.USER_CREATED, result, 201))
     } catch (error) {
       next(error)
     }
@@ -32,7 +32,7 @@ export class UserController {
       const id = this.parseUserId(req.params.id)
       const result = await this.userService.getUserById(id)
 
-      res.json(new SuccessResponse("User fetched successfully", result))
+      res.json(new SuccessResponse(MESSAGES.USER_RETRIEVED, result))
     } catch (error) {
       next(error)
     }
@@ -42,7 +42,7 @@ export class UserController {
     try {
       const result = await this.userService.getAllUsers(req.query)
 
-      res.json(new SuccessResponse("Users fetched successfully", result))
+      res.json(new SuccessResponse(MESSAGES.USERS_RETRIEVED, result))
     } catch (error) {
       next(error)
     }
@@ -54,7 +54,7 @@ export class UserController {
       const data: UpdateUserDTO = req.body
       const result = await this.userService.updateUser(id, data)
 
-      res.json(new SuccessResponse("User updated successfully", result))
+      res.json(new SuccessResponse(MESSAGES.USER_UPDATED, result))
     } catch (error) {
       next(error)
     }
@@ -65,7 +65,7 @@ export class UserController {
       const id = this.parseUserId(req.params.id)
       const result = await this.userService.deleteUser(id)
 
-      res.json(new SuccessResponse("User deleted successfully", result))
+      res.json(new SuccessResponse(MESSAGES.USER_DELETED, result))
     } catch (error) {
       next(error)
     }

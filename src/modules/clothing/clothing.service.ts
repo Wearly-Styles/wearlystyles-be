@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import type { CreateClothingItemDTO } from "./clothing.dto";
 import { CloudinaryService } from "@common/utils/cloudinary.util";
 import { AppError } from "@common/errors/app-error";
+import { MESSAGES } from "@common/constants/messages.constant";
 import { ErrorCode } from "@common/enums/error-code.enum";
 
 export class ClothingService {
@@ -25,7 +26,7 @@ export class ClothingService {
 
         if (!category) {
           throw new AppError(
-            "Category not found or does not belong to user",
+            MESSAGES.CLOTHING_CATEGORY_NOT_FOUND,
             400,
             ErrorCode.BAD_REQUEST,
           );
@@ -94,7 +95,7 @@ export class ClothingService {
       });
 
       if (!existing) {
-        throw new AppError("Clothing item not found", 404, ErrorCode.NOT_FOUND);
+        throw new AppError(MESSAGES.CLOTHING_ITEM_NOT_FOUND, 404, ErrorCode.NOT_FOUND);
       }
 
       await this.cloudinaryService.deleteFileByUrl(existing.image);

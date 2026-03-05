@@ -4,6 +4,7 @@ import { SuccessResponse } from "@common/responses/success.response"
 import type { CalendarQueryDTO, WeatherQueryDTO } from "./context.dto"
 import { AppError } from "@common/errors/app-error"
 import { ErrorCode } from "@common/enums/error-code.enum"
+import { MESSAGES } from "@common/constants/messages.constant"
 
 export class ContextController {
   private contextService = new ContextService()
@@ -17,7 +18,7 @@ export class ContextController {
       }
 
       const result = await this.contextService.getWeatherContext(query)
-      res.json(new SuccessResponse("Weather context retrieved", result))
+      res.json(new SuccessResponse(MESSAGES.CONTEXT_WEATHER_RETRIEVED, result))
     } catch (error) {
       next(error)
     }
@@ -27,7 +28,7 @@ export class ContextController {
     try {
       const data: CalendarQueryDTO = req.body
       const result = await this.contextService.getCalendarContext(data)
-      res.json(new SuccessResponse("Calendar context retrieved", result))
+      res.json(new SuccessResponse(MESSAGES.CONTEXT_CALENDAR_RETRIEVED, result))
     } catch (error) {
       next(error)
     }
@@ -36,10 +37,10 @@ export class ContextController {
   async getCloset(req: Request, res: Response, next: NextFunction) {
     try {
       if (!req.user) {
-        throw new AppError("Unauthorized access", 401, ErrorCode.UNAUTHORIZED)
+        throw new AppError(MESSAGES.AUTH_UNAUTHORIZED, 401, ErrorCode.UNAUTHORIZED)
       }
       const result = await this.contextService.getClosetContext(req.user.id)
-      res.json(new SuccessResponse("Closet context retrieved", result))
+      res.json(new SuccessResponse(MESSAGES.CONTEXT_CLOSET_RETRIEVED, result))
     } catch (error) {
       next(error)
     }

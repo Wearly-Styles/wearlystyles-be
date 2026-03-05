@@ -1,6 +1,7 @@
 import { prisma } from "@modules/prisma"
 import { AppError } from "@common/errors/app-error"
 import { ErrorCode } from "@common/enums/error-code.enum"
+import { MESSAGES } from "@common/constants/messages.constant"
 import type { OutfitPlanItemDTO, OutfitPlanQueryDTO, UpdateOutfitPlanDTO } from "./outfit-plan.dto"
 
 export class OutfitPlanService {
@@ -16,7 +17,7 @@ export class OutfitPlanService {
     })
 
     if (outfits.length !== outfitIds.length) {
-      throw new AppError("Outfit not found or does not belong to user", 400, ErrorCode.BAD_REQUEST)
+      throw new AppError(MESSAGES.OUTFIT_NOT_FOUND_OR_FORBIDDEN, 400, ErrorCode.BAD_REQUEST)
     }
 
     const created = await prisma.$transaction(
@@ -66,7 +67,7 @@ export class OutfitPlanService {
     })
 
     if (!existing) {
-      throw new AppError("Outfit plan not found", 404, ErrorCode.NOT_FOUND)
+      throw new AppError(MESSAGES.OUTFIT_PLAN_NOT_FOUND, 404, ErrorCode.NOT_FOUND)
     }
 
     if (data.outfitId) {
@@ -79,7 +80,7 @@ export class OutfitPlanService {
       })
 
       if (!outfit) {
-        throw new AppError("Outfit not found or does not belong to user", 400, ErrorCode.BAD_REQUEST)
+        throw new AppError(MESSAGES.OUTFIT_NOT_FOUND_OR_FORBIDDEN, 400, ErrorCode.BAD_REQUEST)
       }
     }
 
@@ -106,7 +107,7 @@ export class OutfitPlanService {
     })
 
     if (!existing) {
-      throw new AppError("Outfit plan not found", 404, ErrorCode.NOT_FOUND)
+      throw new AppError(MESSAGES.OUTFIT_PLAN_NOT_FOUND, 404, ErrorCode.NOT_FOUND)
     }
 
     await prisma.outfitPlan.delete({

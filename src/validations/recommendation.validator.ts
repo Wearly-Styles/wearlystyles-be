@@ -29,6 +29,10 @@ const normalizedClosetItemSchema = z
   .object({
     id: z.coerce.number().int().positive(),
     name: z.string().optional(),
+    categoryId: z.preprocess(
+      (value) => (value === null || value === undefined || value === "" ? undefined : value),
+      z.coerce.number().int().positive().optional(),
+    ),
     category: z.string().optional(),
     color: z.string().optional(),
     image: z.string().optional(),

@@ -28,7 +28,7 @@ export class AuthService {
   private async verifyGoogleIdToken(idToken: string) {
     const clientId = config.google.clientId
     if (!clientId) {
-      throw new AppError("Google OAuth client id is missing", 500, ErrorCode.SERVICE_UNAVAILABLE)
+      throw new AppError(MESSAGES.SERVICE_UNAVAILABLE, 503, ErrorCode.SERVICE_UNAVAILABLE)
     }
 
     const url = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
@@ -170,7 +170,7 @@ export class AuthService {
     const clientId = config.google.clientId
     const clientSecret = config.google.clientSecret
     if (!clientId || !clientSecret) {
-      throw new AppError("Google OAuth client credentials are missing", 500, ErrorCode.SERVICE_UNAVAILABLE)
+      throw new AppError(MESSAGES.SERVICE_UNAVAILABLE, 503, ErrorCode.SERVICE_UNAVAILABLE)
     }
 
     const body = new URLSearchParams({

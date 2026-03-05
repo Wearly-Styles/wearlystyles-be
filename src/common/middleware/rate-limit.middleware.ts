@@ -2,12 +2,13 @@ import type { Request, Response, NextFunction } from "express"
 import rateLimit from "express-rate-limit"
 import { AppError } from "@common/errors/app-error"
 import { ErrorCode } from "@common/enums/error-code.enum"
+import { MESSAGES } from "@common/constants/messages.constant"
 
 export const createRateLimiter = (windowMs: number, maxRequests: number) => {
   return rateLimit({
     windowMs,
     max: maxRequests,
-    message: "Too many requests from this IP, please try again later.",
+    message: MESSAGES.TOO_MANY_REQUESTS,
     standardHeaders: true,
     legacyHeaders: false,
     skip: (req: Request) => {
@@ -15,7 +16,7 @@ export const createRateLimiter = (windowMs: number, maxRequests: number) => {
       return req.path === "/health"
     },
     handler: (_req: Request, _res: Response, _next: NextFunction) => {
-      throw new AppError("Too many requests", 429, ErrorCode.SERVICE_UNAVAILABLE)
+      throw new AppError(MESSAGES.TOO_MANY_REQUESTS, 429, ErrorCode.SERVICE_UNAVAILABLE)
     },
   })
 }
