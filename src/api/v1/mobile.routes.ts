@@ -7,6 +7,7 @@ import recommendationRoutes from "@modules/recommendation/recommendation.route";
 import outfitPlanRoutes from "@modules/outfit-plan/outfit-plan.route";
 import outfitRoutes from "@modules/outfit/outfit.route";
 import profileRoutes from "@modules/profile/profile.route";
+import postRoutes from "@modules/post/post.route";
 
 const router = Router();
 
@@ -19,4 +20,5 @@ router.use("/recommendations", recommendationRoutes);
 router.use("/outfit-plans", outfitPlanRoutes);
 router.use("/outfits", outfitRoutes);
 router.use("/profile", profileRoutes);
+router.use("/posts", postRoutes);
 export default router;
