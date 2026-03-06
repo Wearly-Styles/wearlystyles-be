@@ -17,7 +17,7 @@ export class ClothingController {
       const file = req.file;
 
       if (!file) {
-        throw new AppError("Image is required", 400, ErrorCode.BAD_REQUEST);
+        throw new AppError(MESSAGES.IMAGE_REQUIRED, 400, ErrorCode.BAD_REQUEST);
       }
 
       const allowedMimes = [
@@ -28,7 +28,7 @@ export class ClothingController {
       ];
       if (!allowedMimes.includes(file.mimetype)) {
         throw new AppError(
-          "Unsupported image format. Only JPEG, PNG, GIF, and WebP are allowed.",
+          MESSAGES.IMAGE_UNSUPPORTED,
           400,
           ErrorCode.BAD_REQUEST,
         );
@@ -43,7 +43,7 @@ export class ClothingController {
       res
         .status(201)
         .json(
-          new SuccessResponse("Clothing item added successfully", result, 201),
+          new SuccessResponse(MESSAGES.CLOTHING_ITEM_CREATED, result, 201),
         );
     } catch (error) {
       next(error);
@@ -63,7 +63,7 @@ export class ClothingController {
       res
         .status(201)
         .json(
-          new SuccessResponse("Category created successfully", result, 201),
+          new SuccessResponse(MESSAGES.CLOTHING_CATEGORY_CREATED, result, 201),
         );
     } catch (error) {
       next(error);
@@ -81,7 +81,7 @@ export class ClothingController {
       res
         .status(201)
         .json(
-          new SuccessResponse("Tag created successfully", result, 201),
+          new SuccessResponse(MESSAGES.CLOTHING_TAG_CREATED, result, 201),
         );
     } catch (error) {
       next(error);
@@ -99,7 +99,7 @@ export class ClothingController {
       res
         .status(200)
         .json(
-          new SuccessResponse("Categories retrieved successfully", result, 200),
+          new SuccessResponse(MESSAGES.CLOTHING_CATEGORIES_RETRIEVED, result, 200),
         );
     } catch (error) {
       next(error);
@@ -117,7 +117,7 @@ export class ClothingController {
       res
         .status(200)
         .json(
-          new SuccessResponse("Tags retrieved successfully", result, 200),
+          new SuccessResponse(MESSAGES.CLOTHING_TAGS_RETRIEVED, result, 200),
         );
     } catch (error) {
       next(error);
@@ -210,11 +210,11 @@ export class ClothingController {
       const itemId = Number(req.params.id);
 
       if (!Number.isFinite(itemId)) {
-        throw new AppError("Invalid item id", 400, ErrorCode.BAD_REQUEST);
+        throw new AppError(MESSAGES.CLOTHING_ITEM_ID_INVALID, 400, ErrorCode.BAD_REQUEST);
       }
 
       const result = await this.clothingService.deleteClothingItem(user.id, itemId);
-      res.status(200).json(new SuccessResponse("Clothing item deleted successfully", result, 200));
+      res.status(200).json(new SuccessResponse(MESSAGES.CLOTHING_ITEM_DELETED, result, 200));
     } catch (error) {
       next(error);
     }

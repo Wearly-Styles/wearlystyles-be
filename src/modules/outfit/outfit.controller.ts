@@ -3,6 +3,7 @@ import { OutfitService } from "./outfit.service"
 import { SuccessResponse } from "@common/responses/success.response"
 import { AppError } from "@common/errors/app-error"
 import { ErrorCode } from "@common/enums/error-code.enum"
+import { MESSAGES } from "@common/constants/messages.constant"
 import type { CreateOutfitDTO } from "./outfit.dto"
 
 export class OutfitController {
@@ -11,12 +12,12 @@ export class OutfitController {
   async createOutfit(req: Request, res: Response, next: NextFunction) {
     try {
       if (!req.user) {
-        throw new AppError("Unauthorized", 401, ErrorCode.UNAUTHORIZED)
+        throw new AppError(MESSAGES.AUTH_UNAUTHORIZED, 401, ErrorCode.UNAUTHORIZED)
       }
 
       const data = req.body as CreateOutfitDTO
       const result = await this.outfitService.createOutfit(req.user.id, data)
-      res.status(201).json(new SuccessResponse("Outfit created", result, 201))
+      res.status(201).json(new SuccessResponse(MESSAGES.OUTFIT_CREATED, result, 201))
     } catch (error) {
       next(error)
     }

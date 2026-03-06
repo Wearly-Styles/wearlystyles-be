@@ -167,7 +167,7 @@ import { UserController } from "./user.controller"
 import { authMiddleware } from "@middleware/auth.middleware"
 import { roleMiddleware } from "@middleware/role.middleware"
 import { validateRequest } from "@middleware/validation.middleware"
-import { createUserSchema, updateUserSchema } from "@validations/user.validator"
+import { createUserSchema, updateUserSchema, updateUserStatusSchema } from "@validations/user.validator"
 import { ROLES } from "@common/constants/roles.constant"
 
 const router = Router()
@@ -183,6 +183,14 @@ router.get("/:id", (req, res, next) => userController.getUserById(req, res, next
 
 router.patch("/:id", authMiddleware, validateRequest(updateUserSchema), (req, res, next) =>
   userController.updateUser(req, res, next),
+)
+
+router.patch(
+  "/:id/status",
+  authMiddleware,
+  roleMiddleware([ROLES.ADMIN]),
+  validateRequest(updateUserStatusSchema),
+  (req, res, next) => userController.updateUserStatus(req, res, next),
 )
 
 router.delete("/:id", authMiddleware, roleMiddleware([ROLES.ADMIN]), (req, res, next) =>

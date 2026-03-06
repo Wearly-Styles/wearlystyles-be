@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { CloudinaryService } from "@common/utils/cloudinary.util";
 import { AppError } from "@common/errors/app-error";
 import { ErrorCode } from "@common/enums/error-code.enum";
+import { MESSAGES } from "@common/constants/messages.constant";
 import { ProfileDTO, UpdateProfileInput } from "./profile.dto";
 
 export class ProfileService {
@@ -14,7 +15,7 @@ export class ProfileService {
       include: { profile: true },
     });
     if (!user) {
-      throw new AppError("User not found", 404, ErrorCode.NOT_FOUND);
+      throw new AppError(MESSAGES.USER_NOT_FOUND, 404, ErrorCode.NOT_FOUND);
     }
     return ProfileDTO.parse({
       id: user.id,

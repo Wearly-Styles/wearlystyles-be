@@ -1,13 +1,14 @@
 import { prisma } from "@modules/prisma"
 import { AppError } from "@common/errors/app-error"
 import { ErrorCode } from "@common/enums/error-code.enum"
+import { MESSAGES } from "@common/constants/messages.constant"
 import type { CreateOutfitDTO } from "./outfit.dto"
 
 export class OutfitService {
   async createOutfit(userId: number, data: CreateOutfitDTO) {
     const itemIds = Array.from(new Set(data.items || []))
     if (itemIds.length === 0) {
-      throw new AppError("Outfit items are required", 400, ErrorCode.BAD_REQUEST)
+      throw new AppError(MESSAGES.OUTFIT_ITEMS_REQUIRED, 400, ErrorCode.BAD_REQUEST)
     }
 
     const items = await prisma.clothingItem.findMany({
@@ -19,7 +20,7 @@ export class OutfitService {
     })
 
     if (items.length !== itemIds.length) {
-      throw new AppError("One or more clothing items are invalid", 400, ErrorCode.BAD_REQUEST)
+      throw new AppError(MESSAGES.OUTFIT_ITEMS_INVALID, 400, ErrorCode.BAD_REQUEST)
     }
 
     const outfit = await prisma.outfit.create({

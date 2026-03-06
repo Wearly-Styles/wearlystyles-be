@@ -5,9 +5,6 @@ export interface SeedContext {
   formalCategoryId: number
   summerTagId: number
   denimTagId: number
-  adminTeeId: number
-  adminBlazerId: number
-  userJeansId: number
   adminOutfitId: number
   postId: number
 }

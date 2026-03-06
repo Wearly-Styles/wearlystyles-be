@@ -1,7 +1,11 @@
 import { PrismaClient } from "@prisma/client";
-import type { CreateClothingItemDTO, UpdateClothingItemDTO } from "./clothing.dto";
+import type {
+  CreateClothingItemDTO,
+  UpdateClothingItemDTO,
+} from "./clothing.dto";
 import { CloudinaryService } from "@common/utils/cloudinary.util";
 import { AppError } from "@common/errors/app-error";
+import { MESSAGES } from "@common/constants/messages.constant";
 import { ErrorCode } from "@common/enums/error-code.enum";
 
 export class ClothingService {
@@ -13,7 +17,6 @@ export class ClothingService {
     data: CreateClothingItemDTO,
     file: Express.Multer.File,
   ) {
-
     const imageUrl = await this.cloudinaryService.uploadFile(file);
     if (data.categoryId) {
       const category = await this.prisma.category.findFirst({
@@ -85,9 +88,8 @@ export class ClothingService {
   }
 
   async getClothingItemById(itemId: number, userId: number) {
-
     const checkItem = await this.prisma.clothingItem.findUnique({
-      where: { id: itemId }
+      where: { id: itemId },
     });
 
     const item = await this.prisma.clothingItem.findFirst({
@@ -123,11 +125,7 @@ export class ClothingService {
     });
 
     if (!existing) {
-      throw new AppError(
-        "Clothing item not found",
-        404,
-        ErrorCode.NOT_FOUND,
-      );
+      throw new AppError("Clothing item not found", 404, ErrorCode.NOT_FOUND);
     }
 
     if (data.categoryId !== undefined) {
@@ -161,13 +159,15 @@ export class ClothingService {
       material: data.material,
       description: data.description,
       season: data.season,
-      isFavorite: data.isFavorite !== undefined ?
-        (String(data.isFavorite) === 'true') : undefined,
+      isFavorite:
+        data.isFavorite !== undefined
+          ? String(data.isFavorite) === "true"
+          : undefined,
       categoryId: data.categoryId,
     };
 
-    Object.keys(updateData).forEach(key =>
-      updateData[key] === undefined && delete updateData[key]
+    Object.keys(updateData).forEach(
+      (key) => updateData[key] === undefined && delete updateData[key],
     );
 
     if (imageUrl) {

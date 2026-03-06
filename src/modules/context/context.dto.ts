@@ -35,6 +35,7 @@ export interface NormalizedEvent {
 export interface NormalizedClosetItem {
   id: number
   name?: string
+  categoryId?: number
   category?: string
   color?: string
   image?: string

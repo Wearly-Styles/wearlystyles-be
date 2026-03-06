@@ -2,6 +2,7 @@ import { prisma } from "@modules/prisma"
 import config from "@config/env"
 import { AppError } from "@common/errors/app-error"
 import { ErrorCode } from "@common/enums/error-code.enum"
+import { MESSAGES } from "@common/constants/messages.constant"
 import type { CalendarQueryDTO, NormalizedClosetItem, NormalizedEvent, NormalizedWeather, WeatherQueryDTO } from "./context.dto"
 import { buildWeatherTags, getTimeOfDay, mapDressCode, mapEventType } from "@helpers/context.helper"
 
@@ -47,13 +48,13 @@ export class ContextService {
   private async fetchOpenWeather<T>(endpoint: string, lat: number, lon: number): Promise<T> {
     const apiKey = config.openweather_api_key
     if (!apiKey) {
-      throw new AppError("OpenWeather API key is missing", 500, ErrorCode.SERVICE_UNAVAILABLE)
+      throw new AppError(MESSAGES.CONTEXT_WEATHER_UNAVAILABLE, 503, ErrorCode.SERVICE_UNAVAILABLE)
     }
 
     const url = `${OPEN_WEATHER_BASE_URL}/${endpoint}?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`
     const response = await this.fetchWithTimeout(url)
     if (!response.ok) {
-      throw new AppError("Failed to fetch weather data", response.status, ErrorCode.SERVICE_UNAVAILABLE)
+      throw new AppError(MESSAGES.CONTEXT_WEATHER_UNAVAILABLE, 503, ErrorCode.SERVICE_UNAVAILABLE)
     }
 
     return (await response.json()) as T
@@ -100,7 +101,7 @@ export class ContextService {
   async getCalendarContext(query: CalendarQueryDTO): Promise<NormalizedEvent[]> {
     const { accessToken } = query
     if (!accessToken) {
-      throw new AppError("Google access token is required", 400, ErrorCode.BAD_REQUEST)
+      throw new AppError(MESSAGES.CONTEXT_GOOGLE_TOKEN_REQUIRED, 400, ErrorCode.BAD_REQUEST)
     }
 
     const timeMin = query.timeMin || new Date().toISOString()
@@ -122,7 +123,7 @@ export class ContextService {
     })
 
     if (!response.ok) {
-      throw new AppError("Failed to fetch calendar events", response.status, ErrorCode.SERVICE_UNAVAILABLE)
+      throw new AppError(MESSAGES.CONTEXT_CALENDAR_UNAVAILABLE, 503, ErrorCode.SERVICE_UNAVAILABLE)
     }
 
     const data = (await response.json()) as { items?: GoogleCalendarEvent[] }
@@ -174,6 +175,7 @@ export class ContextService {
       return {
         id: item.id,
         name: item.name || undefined,
+        categoryId: item.categoryId ?? undefined,
         category: item.category?.name || undefined,
         color: item.color || undefined,
         image: item.image || undefined,

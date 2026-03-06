@@ -6,6 +6,7 @@ import { ContextService } from "@modules/context/context.service"
 import type { CalendarQueryDTO, WeatherQueryDTO } from "@modules/context/context.dto"
 import { AppError } from "@common/errors/app-error"
 import { ErrorCode } from "@common/enums/error-code.enum"
+import { MESSAGES } from "@common/constants/messages.constant"
 
 export class RecommendationController {
   private recommendationService = new RecommendationService()
@@ -19,7 +20,7 @@ export class RecommendationController {
       }
 
       if (!req.user) {
-        throw new AppError("Unauthorized", 401, ErrorCode.UNAUTHORIZED)
+        throw new AppError(MESSAGES.AUTH_UNAUTHORIZED, 401, ErrorCode.UNAUTHORIZED)
       }
 
       let { weather, calendar, closet, preferences, includeAlternatives, alternativesCount } = body
@@ -37,7 +38,7 @@ export class RecommendationController {
       }
 
       if (!closet || closet.length === 0) {
-        throw new AppError("Closet items are required", 400, ErrorCode.BAD_REQUEST)
+        throw new AppError(MESSAGES.CLOSET_ITEMS_REQUIRED, 400, ErrorCode.BAD_REQUEST)
       }
 
       const context: RecommendationContextDTO = {
@@ -50,7 +51,7 @@ export class RecommendationController {
       }
 
       const result = await this.recommendationService.recommendByContext(context)
-      res.json(new SuccessResponse("Outfit recommendation generated", result))
+      res.json(new SuccessResponse(MESSAGES.RECOMMENDATION_GENERATED, result))
     } catch (error) {
       next(error)
     }
@@ -64,7 +65,7 @@ export class RecommendationController {
       }
 
       if (!req.user) {
-        throw new AppError("Unauthorized", 401, ErrorCode.UNAUTHORIZED)
+        throw new AppError(MESSAGES.AUTH_UNAUTHORIZED, 401, ErrorCode.UNAUTHORIZED)
       }
 
       let { weather, calendar, closet, preferences, selectedEventType, selectedStyle, includeAlternatives, alternativesCount } = body
@@ -82,7 +83,7 @@ export class RecommendationController {
       }
 
       if (!closet || closet.length === 0) {
-        throw new AppError("Closet items are required", 400, ErrorCode.BAD_REQUEST)
+        throw new AppError(MESSAGES.CLOSET_ITEMS_REQUIRED, 400, ErrorCode.BAD_REQUEST)
       }
 
       const context: RecommendationContextDTO = {
@@ -97,7 +98,7 @@ export class RecommendationController {
       }
 
       const result = await this.recommendationService.recommendBySelection(context)
-      res.json(new SuccessResponse("Outfit recommendation generated", result))
+      res.json(new SuccessResponse(MESSAGES.RECOMMENDATION_GENERATED, result))
     } catch (error) {
       next(error)
     }
