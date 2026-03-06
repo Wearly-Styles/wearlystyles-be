@@ -5,6 +5,7 @@ import { AppError } from "@common/errors/app-error"
 import { MESSAGES } from "@common/constants/messages.constant"
 import { ErrorCode } from "@common/enums/error-code.enum"
 import type { CreateUserDTO, UpdateUserDTO } from "./user.dto"
+import type { UserStatus } from "@common/enums/user-status.enum"
 
 export class UserController {
   private userService = new UserService()
@@ -63,9 +64,27 @@ export class UserController {
   async deleteUser(req: Request, res: Response, next: NextFunction) {
     try {
       const id = this.parseUserId(req.params.id)
+      if (req.user?.id === id) {
+        throw new AppError(MESSAGES.FORBIDDEN, 403, ErrorCode.FORBIDDEN)
+      }
       const result = await this.userService.deleteUser(id)
 
       res.json(new SuccessResponse(MESSAGES.USER_DELETED, result))
+    } catch (error) {
+      next(error)
+    }
+  }
+
+  async updateUserStatus(req: Request, res: Response, next: NextFunction) {
+    try {
+      const id = this.parseUserId(req.params.id)
+      if (req.user?.id === id) {
+        throw new AppError(MESSAGES.FORBIDDEN, 403, ErrorCode.FORBIDDEN)
+      }
+
+      const { status } = req.body as { status: UserStatus }
+      const result = await this.userService.updateUserStatus(id, status)
+      res.json(new SuccessResponse(MESSAGES.USER_UPDATED, result))
     } catch (error) {
       next(error)
     }

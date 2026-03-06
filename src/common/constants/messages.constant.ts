@@ -13,6 +13,9 @@ export const MESSAGES = {
   AUTH_GOOGLE_FAILED: "Google authentication failed",
   AUTH_TOKEN_REFRESHED: "Session refreshed",
   AUTH_GOOGLE_LOGIN_SUCCESS: "Google login successful",
+  AUTH_ACCOUNT_INACTIVE: "Account is inactive",
+  AUTH_ACCOUNT_SUSPENDED: "Account is suspended",
+  AUTH_ACCOUNT_DELETED: "Account is deleted",
 
   // Context
   CONTEXT_WEATHER_RETRIEVED: "Weather updated",
@@ -58,6 +61,9 @@ export const MESSAGES = {
   RECOMMENDATION_FAILED: "Couldn't generate recommendations. Please try again",
   CLOSET_ITEMS_REQUIRED: "Please add items to your wardrobe first",
   CLOSET_ITEM_IDS_INVALID: "Invalid wardrobe items selected",
+
+  // Dashboard
+  DASHBOARD_METRICS_RETRIEVED: "Dashboard updated",
 
   // User
   USER_CREATED: "User created successfully",
