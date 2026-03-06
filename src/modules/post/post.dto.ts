@@ -34,3 +34,20 @@ export const UserPostDTO = z.object({
         updatedAt: z.date().nullable().optional(),
     })),
 });
+
+export const CreatePostDTO = z.object({
+  status: z.string().min(1),
+  caption: z.string().nullable().optional(),
+});
+
+export const UpdatePostDTO = z.object({
+  status: z.string().optional(),
+  caption: z.string().nullable().optional(),
+});
+
+export const DeletePostDTO = z.object({
+  id: z.number().int().positive(),
+});
+
+export type CreatePostInput = z.infer<typeof CreatePostDTO>;
+export type UpdatePostInput = z.infer<typeof UpdatePostDTO>;
