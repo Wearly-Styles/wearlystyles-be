@@ -191,4 +191,8 @@ router.post("/google", authRateLimiter, validateRequest(googleAuthSchema),
   (req, res, next) => authController.googleLogin(req, res, next)
 )
 
+router.post("/forgot-password", (req, res, next) => authController.forgotPassword(req, res, next));
+
+router.post("/reset-password", (req, res, next) => authController.resetPassword(req, res, next));
+
 export default router
