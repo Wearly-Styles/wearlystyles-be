@@ -112,4 +112,14 @@ export class AuthController {
       next(error);
     }
   }
+
+  async forgotPassword(req: Request, res: Response, next: NextFunction) {
+    await this.authService.forgotPassword(req.body.email);
+    res.json({ success: true, message: "Check your email for the reset code" });
+  }
+
+async resetPassword(req: Request, res: Response, next: NextFunction) {
+    await this.authService.resetPassword(req.body);
+    res.json({ success: true, message: "Password reset successfully" });
+  }
 }
