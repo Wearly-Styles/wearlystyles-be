@@ -193,6 +193,8 @@ router.post("/google", authRateLimiter, validateRequest(googleAuthSchema),
 
 router.post("/forgot-password", (req, res, next) => authController.forgotPassword(req, res, next));
 
+router.post("/verify-otp", (req, res, next) => authController.verifyOtp(req, res, next));
+
 router.post("/reset-password", (req, res, next) => authController.resetPassword(req, res, next));
 
 export default router
