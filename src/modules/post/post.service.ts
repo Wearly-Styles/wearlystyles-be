@@ -89,7 +89,7 @@ export class PostService {
     }
   }
 
-  async getPostsByUserId(userId: number) {
+  async getPostsByUserId(userId: number, currentUserId: number) {
     const posts = await this.prisma.post.findMany({
       where: { userId },
       include: {
@@ -98,17 +98,31 @@ export class PostService {
             profile: true,
           },
         },
-        comments: true,
+        comments: {
+          include: {
+            user: {
+              include: {
+                profile: true,
+              },
+            },
+          },
+        },
         likes: true,
       },
     });
     return posts.map((post) => {
+      const activeLikes = post.likes.filter((l) => l.isActive);
       const status = post.status ?? "";
       const caption = post.caption ?? "";
 
       return UserPostDTO.parse({
         id: post.id,
         userId: post.userId,
+        user: {
+          id: post.user?.id ?? 0,
+          name: post.user?.profile?.fullName ?? "Unknown",
+          avatar: post.user?.profile?.avatar ?? null,
+        },
         image: post.image,
         name: post.user?.profile?.fullName ?? "Unknown",
         status,
@@ -116,11 +130,18 @@ export class PostService {
         createdAt: post.createdAt,
         updatedAt: post.updatedAt,
         likes: post.likes.length,
+        liked: activeLikes.some((like) => like.userId === currentUserId),
+
         comments: post.comments.map((comment) => ({
           id: comment.id,
           content: comment.content,
           createdAt: comment.createdAt,
           updatedAt: comment.updatedAt,
+          user: {
+            id: comment.user?.id ?? 0,
+            name: comment.user?.profile?.fullName ?? "Unknown",
+            avatar: comment.user?.profile?.avatar ?? null,
+          },
         })),
       });
     });
@@ -158,9 +179,20 @@ export class PostService {
     const name = post.user?.profile?.fullName ?? "Unknown";
 
     return UserPostDTO.parse({
-      ...post,
-      name,
+      id: post.id,
+      userId: post.userId,
+      user: {
+        id: post.user?.id ?? 0,
+        name,
+        avatar: post.user?.profile?.avatar ?? null,
+      },
+      image: post.image,
+      status: post.status ?? null,
+      caption: post.caption ?? null,
+      createdAt: post.createdAt ?? null,
+      updatedAt: post.updatedAt ?? null,
       likes: 0,
+      liked: false,
       comments: [],
     });
   }

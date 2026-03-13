@@ -60,7 +60,7 @@ export class PostController {
         throw new AppError("Unauthorized", 401, ErrorCode.UNAUTHORIZED);
       }
 
-      const posts = await this.postService.getPostsByUserId(Number(userId));
+      const posts = await this.postService.getPostsByUserId(userId, userId);
 
       return res
         .status(200)
