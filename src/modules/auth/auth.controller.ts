@@ -97,4 +97,31 @@ export class AuthController {
       next(error);
     }
   }
+
+  async forgotPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      await this.authService.forgotPassword(req.body.email);
+      res.json({ success: true, message: "Check your email for the reset code" });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async verifyOtp(req: Request, res: Response, next: NextFunction) {
+    try {
+      await this.authService.verifyOtp(req.body);
+      res.json({ success: true, message: "OTP verified successfully" });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async resetPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      await this.authService.resetPassword(req.body);
+      res.json({ success: true, message: MESSAGES.AUTH_PASSWORD_RESET });
+    } catch (error) {
+      next(error);
+    }
+  }
 }

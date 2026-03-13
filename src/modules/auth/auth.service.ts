@@ -11,6 +11,8 @@ import type { User } from "@prisma/client"
 import { googleClient } from "@config/google"
 import config from "@config/env"
 import logger from "@config/logger"
+import crypto from "crypto"
+import { emailService } from "@common/utils/email.util"
 
 export class AuthService {
   private userRepository = new UserRepository()
@@ -165,11 +167,11 @@ export class AuthService {
         status: "active",
         profile: payload.name || payload.picture
           ? {
-              create: {
-                fullName: payload.name || undefined,
-                avatar: payload.picture || undefined,
-              },
-            }
+            create: {
+              fullName: payload.name || undefined,
+              avatar: payload.picture || undefined,
+            },
+          }
           : undefined,
       })
     }
@@ -318,8 +320,64 @@ export class AuthService {
         refreshToken,
       };
     } catch (error) {
-      console.error("Google Auth Error Detail:", error); // Log chi tiết để debug
       throw new AuthError(MESSAGES.AUTH_GOOGLE_FAILED);
     }
+  }
+
+  async forgotPassword(email: string): Promise<void> {
+    const user = await this.userRepository.findByEmail(email.toLowerCase());
+    if (!user) {
+      throw new AppError(
+        MESSAGES.USER_NOT_FOUND,
+        404,
+        ErrorCode.NOT_FOUND
+      );
+    }
+
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = new Date(Date.now() + 3 * 60 * 1000);
+
+    await this.userRepository.update(user.id, {
+      resetCode: otpCode,
+      resetTokenExpiresAt: expires,
+    });
+
+    await emailService.sendResetOtpEmail(user.email, otpCode);
+  }
+
+  async verifyOtp(data: { email: string; otp: string }): Promise<void> {
+    const user = await this.userRepository.findByEmail(data.email.toLowerCase());
+
+    if (!user) {
+      throw new AppError(MESSAGES.USER_NOT_FOUND, 404, ErrorCode.NOT_FOUND);
+    }
+
+    if (!user.resetCode || user.resetCode != data.otp) {
+      throw new AppError("Invalid OTP code", 400, ErrorCode.VALIDATION_ERROR);
+    }
+
+    const currentTime = new Date();
+    if (!user.resetTokenExpiresAt || user.resetTokenExpiresAt < currentTime) {
+      throw new AppError("OTP code has expired", 400, ErrorCode.VALIDATION_ERROR);
+    }
+  }
+
+  async resetPassword(data: { email: string; newPassword: string }): Promise<void> {
+    const user = await this.userRepository.findByEmail(data.email);
+
+    if (!user) {
+      throw new AppError("Invalid or expired reset token", 400, ErrorCode.VALIDATION_ERROR);
+    }
+
+    const hashedPassword = await hashPassword(data.newPassword);
+
+    await this.userRepository.update(user.id, {
+      password: hashedPassword,
+      resetCode: null,
+      resetTokenExpiresAt: null,
+      refreshToken: null,
+    });
+
+    logger.info(`User ${user.id} has reset password successfully.`);
   }
 }
