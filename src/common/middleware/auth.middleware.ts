@@ -1,9 +1,13 @@
 import type { Request, Response, NextFunction } from "express";
 import { verifyToken } from "@utils/jwt.util";
 import { AuthError } from "@common/errors/auth-error";
+import { AppError } from "@common/errors/app-error";
 import { MESSAGES } from "@common/constants/messages.constant";
+import { ErrorCode } from "@common/enums/error-code.enum";
+import { prisma } from "@modules/prisma";
+import { UserStatus } from "@common/enums/user-status.enum";
 
-export const authMiddleware = (req: Request, _res: Response, next: NextFunction) => {
+export const authMiddleware = async (req: Request, _res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
 
@@ -26,7 +30,29 @@ export const authMiddleware = (req: Request, _res: Response, next: NextFunction)
       throw new AuthError(MESSAGES.AUTH_TOKEN_INVALID);
     }
 
-    req.user = decoded;
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+      select: { id: true, email: true, role: true, status: true },
+    });
+
+    if (!user) {
+      console.error("[AuthMiddleware] Token user not found");
+      throw new AuthError(MESSAGES.AUTH_TOKEN_INVALID);
+    }
+
+    if (user.status && user.status !== UserStatus.ACTIVE) {
+      const message =
+        user.status === UserStatus.SUSPENDED
+          ? MESSAGES.AUTH_ACCOUNT_SUSPENDED
+          : user.status === UserStatus.INACTIVE
+            ? MESSAGES.AUTH_ACCOUNT_INACTIVE
+            : user.status === UserStatus.DELETED
+              ? MESSAGES.AUTH_ACCOUNT_DELETED
+              : MESSAGES.FORBIDDEN
+      throw new AppError(message, 403, ErrorCode.FORBIDDEN)
+    }
+
+    req.user = { id: user.id, email: user.email, role: user.role ?? "user" };
 
     console.log(`[AuthMiddleware] User authenticated: ID ${req.user.id}`);
 

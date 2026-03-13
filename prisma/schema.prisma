@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "windows", "linux-musl-openssl-3.0.x"]
 }
 
@@ -9,105 +9,101 @@ datasource db {
 }
 
 model User {
-  id                   Int                @id @default(autoincrement())
-  email                String             @unique
+  id                   Int             @id @default(autoincrement())
+  email                String          @unique
   password             String
   resetToken           String?
   resetTokenExpiresAt  DateTime?
-  refreshToken         String?            @map("refresh_token")
   role                 String?
   status               String?
-  createdAt            DateTime          @default(now()) @map("created_at")
-
-  profile              UserProfile?
-  clothingItems        ClothingItem[]
-  outfits              Outfit[]
-  outfitPlans          OutfitPlan[]
-  outfitHistories      OutfitHistory[]
-  posts                Post[]
-  comments             Comment[]
-  likes                Like[]
-  following            Follow[]           @relation("UserFollowing")
-  followers            Follow[]           @relation("UserFollowers")
-  notifications        Notification[]     @relation("NotificationUser")
-  notificationsCreated Notification[]     @relation("NotificationActor")
-  payments             Payment[]
-
+  createdAt            DateTime?       @default(now()) @map("created_at")
+  refreshToken         String?         @map("refresh_token")
+  resetCode            String?         @map("reset_code")
   categories           Category[]
+  clothingItems        ClothingItem[]
+  comments             Comment[]
+  following            Follow[]        @relation("UserFollowing")
+  followers            Follow[]        @relation("UserFollowers")
+  likes                Like[]
+  notificationsCreated Notification[]  @relation("NotificationActor")
+  notifications        Notification[]  @relation("NotificationUser")
+  outfitHistories      OutfitHistory[]
+  outfitPlans          OutfitPlan[]
+  outfits              Outfit[]
+  payments             Payment[]
+  posts                Post[]
   tag                  Tag[]
+  profile              UserProfile?
+
   @@map("users")
 }
 
 model UserProfile {
-  id           Int      @id @default(autoincrement())
-  userId       Int      @unique @map("user_id")
-  fullName     String?  @map("full_name")
-  avatar       String?
-  preferences  String?
-  isPremium    Boolean? @map("is_premium")
-  gender       String?
-  birthday     DateTime?
-  location     String?
-  updatedAt    DateTime? @map("updated_at")
-
-  user         User     @relation(fields: [userId], references: [id])
+  id          Int       @id @default(autoincrement())
+  userId      Int       @unique @map("user_id")
+  fullName    String?   @map("full_name")
+  avatar      String?
+  preferences String?
+  isPremium   Boolean?  @map("is_premium")
+  gender      String?
+  birthday    DateTime?
+  location    String?
+  updatedAt   DateTime? @map("updated_at")
+  user        User      @relation(fields: [userId], references: [id])
 
   @@map("user_profiles")
 }
 
 model Category {
-  id          Int             @id @default(autoincrement())
-  userId      Int       @map("user_id")
-  name        String?
-  description String?
-  icon        String?
-  createdAt   DateTime?       @map("created_at")
-
+  id            Int            @id @default(autoincrement())
+  name          String?
+  description   String?
+  icon          String?
+  createdAt     DateTime?      @map("created_at")
+  userId        Int            @map("user_id")
+  user          User           @relation(fields: [userId], references: [id])
   clothingItems ClothingItem[]
-  user         User            @relation(fields: [userId], references: [id])
 
   @@map("categories")
 }
 
 model Tag {
-  id        Int                 @id @default(autoincrement())
-  userId      Int       @map("user_id")
-  name      String?
-  type      String?
-  createdAt DateTime?           @map("created_at")
-
+  id               Int               @id @default(autoincrement())
+  name             String?
+  type             String?
+  createdAt        DateTime?         @map("created_at")
+  userId           Int               @map("user_id")
   clothingItemTags ClothingItemTag[]
-  user         User            @relation(fields: [userId], references: [id])
+  user             User              @relation(fields: [userId], references: [id])
+
   @@map("tags")
 }
 
 model ClothingItem {
-  id          Int                @id @default(autoincrement())
-  userId      Int                @map("user_id")
-  categoryId  Int?               @map("category_id")
+  id          Int               @id @default(autoincrement())
+  userId      Int               @map("user_id")
+  categoryId  Int?              @map("category_id")
   name        String?
   color       String?
   image       String?
-  isDefault   Boolean?           @map("is_default")
-  isFavorite  Boolean?           @map("is_favorite")
+  isDefault   Boolean?          @map("is_default")
+  isFavorite  Boolean?          @map("is_favorite")
   description String?
   season      String?
   material    String?
-  createdAt   DateTime?          @map("created_at")
-  updatedAt   DateTime?          @map("updated_at")
-
-  user        User               @relation(fields: [userId], references: [id])
-  category    Category?          @relation(fields: [categoryId], references: [id])
+  createdAt   DateTime?         @map("created_at")
+  updatedAt   DateTime?         @map("updated_at")
   tags        ClothingItemTag[]
+  category    Category?         @relation(fields: [categoryId], references: [id])
+  user        User              @relation(fields: [userId], references: [id])
   outfitItems OutfitItem[]
 
   @@map("clothing_items")
 }
 
 model ClothingItemTag {
-  clothingItemId Int @map("clothing_item_id")
-  tagId          Int @map("tag_id")
-
+  clothingItemId Int          @map("clothing_item_id")
+  tagId          Int          @map("tag_id")
   clothingItem   ClothingItem @relation(fields: [clothingItemId], references: [id])
   tag            Tag          @relation(fields: [tagId], references: [id])
 
@@ -116,44 +112,41 @@ model ClothingItemTag {
 }
 
 model Outfit {
-  id         Int           @id @default(autoincrement())
-  userId     Int           @map("user_id")
+  id         Int             @id @default(autoincrement())
+  userId     Int             @map("user_id")
   name       String?
   occasion   String?
   weather    String?
-  isFavorite Boolean?      @map("is_favorite")
-  createdAt  DateTime?     @map("created_at")
-
-  user        User         @relation(fields: [userId], references: [id])
-  items       OutfitItem[]
-  plans       OutfitPlan[]
-  histories   OutfitHistory[]
+  isFavorite Boolean?        @map("is_favorite")
+  createdAt  DateTime?       @map("created_at")
+  histories  OutfitHistory[]
+  items      OutfitItem[]
+  plans      OutfitPlan[]
+  user       User            @relation(fields: [userId], references: [id])
 
   @@map("outfits")
 }
 
 model OutfitItem {
-  outfitId       Int @map("outfit_id")
-  clothingItemId Int @map("clothing_item_id")
-
-  outfit         Outfit       @relation(fields: [outfitId], references: [id])
+  outfitId       Int          @map("outfit_id")
+  clothingItemId Int          @map("clothing_item_id")
   clothingItem   ClothingItem @relation(fields: [clothingItemId], references: [id])
+  outfit         Outfit       @relation(fields: [outfitId], references: [id])
 
   @@unique([outfitId, clothingItemId])
   @@map("outfit_items")
 }
 
 model OutfitPlan {
-  id         Int       @id @default(autoincrement())
-  userId     Int?      @map("user_id")
-  outfitId   Int?      @map("outfit_id")
-  planDate   DateTime? @map("plan_date")
-  planType   String?   @map("plan_type")
-  reminderSent Boolean? @map("reminder_sent")
-  createdAt  DateTime? @map("created_at")
-
-  user       User?     @relation(fields: [userId], references: [id])
-  outfit     Outfit?   @relation(fields: [outfitId], references: [id])
+  id           Int       @id @default(autoincrement())
+  userId       Int?      @map("user_id")
+  outfitId     Int?      @map("outfit_id")
+  planDate     DateTime? @map("plan_date")
+  planType     String?   @map("plan_type")
+  reminderSent Boolean?  @map("reminder_sent")
+  createdAt    DateTime? @map("created_at")
+  outfit       Outfit?   @relation(fields: [outfitId], references: [id])
+  user         User?     @relation(fields: [userId], references: [id])
 
   @@map("outfit_plans")
 }
@@ -165,9 +158,8 @@ model OutfitHistory {
   wornDate  DateTime? @map("worn_date")
   note      String?
   createdAt DateTime? @map("created_at")
-
-  user      User?     @relation(fields: [userId], references: [id])
   outfit    Outfit?   @relation(fields: [outfitId], references: [id])
+  user      User?     @relation(fields: [userId], references: [id])
 
   @@map("outfit_histories")
 }
@@ -180,10 +172,9 @@ model Post {
   status    String?
   createdAt DateTime? @map("created_at")
   updatedAt DateTime? @map("updated_at")
-
-  user      User?     @relation(fields: [userId], references: [id])
   comments  Comment[]
   likes     Like[]
+  user      User?     @relation(fields: [userId], references: [id])
 
   @@map("posts")
 }
@@ -195,7 +186,6 @@ model Comment {
   content   String?
   createdAt DateTime? @map("created_at")
   updatedAt DateTime? @map("updated_at")
-
   post      Post?     @relation(fields: [postId], references: [id])
   user      User?     @relation(fields: [userId], references: [id])
 
@@ -208,7 +198,6 @@ model Like {
   userId    Int?      @map("user_id")
   isActive  Boolean?  @map("is_active")
   createdAt DateTime? @map("created_at")
-
   post      Post?     @relation(fields: [postId], references: [id])
   user      User?     @relation(fields: [userId], references: [id])
 
@@ -217,30 +206,28 @@ model Like {
 }
 
 model Follow {
-  followerId Int      @map("follower_id")
-  followingId Int     @map("following_id")
-  createdAt  DateTime? @map("created_at")
-
-  follower   User     @relation("UserFollowing", fields: [followerId], references: [id])
-  following  User     @relation("UserFollowers", fields: [followingId], references: [id])
+  followerId  Int       @map("follower_id")
+  followingId Int       @map("following_id")
+  createdAt   DateTime? @map("created_at")
+  follower    User      @relation("UserFollowing", fields: [followerId], references: [id])
+  following   User      @relation("UserFollowers", fields: [followingId], references: [id])
 
   @@unique([followerId, followingId])
   @@map("follows")
 }
 
 model Notification {
-  id            Int      @id @default(autoincrement())
-  userId        Int?     @map("user_id")
-  actorId       Int?     @map("actor_id")
+  id            Int       @id @default(autoincrement())
+  userId        Int?      @map("user_id")
+  actorId       Int?      @map("actor_id")
   type          String?
   content       String?
-  referenceId   Int?     @map("reference_id")
-  referenceType String?  @map("reference_type")
-  isRead        Boolean? @map("is_read")
+  referenceId   Int?      @map("reference_id")
+  referenceType String?   @map("reference_type")
+  isRead        Boolean?  @map("is_read")
   createdAt     DateTime? @map("created_at")
-
-  user          User?    @relation("NotificationUser", fields: [userId], references: [id])
-  actor         User?    @relation("NotificationActor", fields: [actorId], references: [id])
+  actor         User?     @relation("NotificationActor", fields: [actorId], references: [id])
+  user          User?     @relation("NotificationUser", fields: [userId], references: [id])
 
   @@map("notifications")
 }
@@ -248,7 +235,7 @@ model Notification {
 model Payment {
   id            Int       @id @default(autoincrement())
   userId        Int       @map("user_id")
-  amount        Decimal? 
+  amount        Decimal?
   currency      String?
   paymentMethod String?   @map("payment_method")
   transactionId String?   @map("transaction_id")
@@ -257,7 +244,6 @@ model Payment {
   premiumStart  DateTime? @map("premium_start")
   premiumEnd    DateTime? @map("premium_end")
   createdAt     DateTime? @map("created_at")
-
   user          User      @relation(fields: [userId], references: [id])
 
   @@map("payments")

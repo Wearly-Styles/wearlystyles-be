@@ -1,7 +1,11 @@
 import { PrismaClient } from "@prisma/client";
-import type { CreateClothingItemDTO, UpdateClothingItemDTO } from "./clothing.dto";
+import type {
+  CreateClothingItemDTO,
+  UpdateClothingItemDTO,
+} from "./clothing.dto";
 import { CloudinaryService } from "@common/utils/cloudinary.util";
 import { AppError } from "@common/errors/app-error";
+import { MESSAGES } from "@common/constants/messages.constant";
 import { ErrorCode } from "@common/enums/error-code.enum";
 
 export class ClothingService {
@@ -13,7 +17,6 @@ export class ClothingService {
     data: CreateClothingItemDTO,
     file: Express.Multer.File,
   ) {
-
     const imageUrl = await this.cloudinaryService.uploadFile(file);
     if (data.categoryId) {
       const category = await this.prisma.category.findFirst({
@@ -84,43 +87,28 @@ export class ClothingService {
     });
   }
 
-  async getClothingItemById(userId: number, itemId: number) {
+  async getClothingItemById(itemId: number, userId: number) {
+    const checkItem = await this.prisma.clothingItem.findUnique({
+      where: { id: itemId },
+    });
+
     const item = await this.prisma.clothingItem.findFirst({
       where: {
         id: itemId,
-        userId,
+        userId: userId,
       },
       include: {
         category: {
-          select: {
-            id: true,
-            name: true,
-          },
+          select: { id: true, name: true },
         },
       },
     });
 
     if (!item) {
-      throw new AppError(
-        "Clothing item not found",
-        404,
-        ErrorCode.NOT_FOUND,
-      );
+      throw new AppError("Clothing item not found", 404, ErrorCode.NOT_FOUND);
     }
 
-    return {
-      id: item.id,
-      name: item.name,
-      image: item.image,
-      color: item.color,
-      material: item.material,
-      description: item.description,
-      season: item.season,
-      isFavorite: item.isFavorite,
-
-      categoryId: item.categoryId,
-      category: item.category,
-    };
+    return item;
   }
 
   async updateClothingItem(
@@ -137,14 +125,9 @@ export class ClothingService {
     });
 
     if (!existing) {
-      throw new AppError(
-        "Clothing item not found",
-        404,
-        ErrorCode.NOT_FOUND,
-      );
+      throw new AppError("Clothing item not found", 404, ErrorCode.NOT_FOUND);
     }
 
-    // Validate category nếu có update
     if (data.categoryId !== undefined) {
       const category = await this.prisma.category.findFirst({
         where: {
@@ -163,27 +146,31 @@ export class ClothingService {
     }
 
     let imageUrl: string | undefined;
-
     if (file) {
-      // Xóa ảnh cũ nếu tồn tại
       if (existing.image) {
         await this.cloudinaryService.deleteFileByUrl(existing.image);
       }
-
       imageUrl = await this.cloudinaryService.uploadFile(file);
     }
 
-    // Build object chỉ chứa field có giá trị
-    const updateData: any = {};
+    const updateData: any = {
+      name: data.name,
+      color: data.color,
+      material: data.material,
+      description: data.description,
+      season: data.season,
+      isFavorite:
+        data.isFavorite !== undefined
+          ? String(data.isFavorite) === "true"
+          : undefined,
+      categoryId: data.categoryId,
+    };
 
-    for (const key in data) {
-      const value = data[key as keyof UpdateClothingItemDTO];
-      if (value !== undefined) {
-        updateData[key] = value;
-      }
-    }
+    Object.keys(updateData).forEach(
+      (key) => updateData[key] === undefined && delete updateData[key],
+    );
 
-    if (imageUrl !== undefined) {
+    if (imageUrl) {
       updateData.image = imageUrl;
     }
 

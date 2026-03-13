@@ -51,4 +51,24 @@ export class UserRepository {
     const count = await prisma.user.count({ where: { email } })
     return count > 0
   }
+
+  async findByResetCode(otpCode: string): Promise<User | null> {
+
+    const user = await prisma.user.findFirst({
+      where: {
+        resetCode: String(otpCode),
+        resetTokenExpiresAt: {
+          gt: new Date(),
+        },
+      },
+    });
+
+    if (!user) {
+      console.log("==> Do not find user with reset code:", otpCode);
+    } else {
+      console.log("==> Found User:", user.email);
+    }
+
+    return user;
+  }
 }

@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from "express";
 import { AuthService } from "./auth.service";
 import { SuccessResponse } from "@common/responses/success.response";
 import { AuthError } from "@common/errors/auth-error";
+import { MESSAGES } from "@common/constants/messages.constant";
 import type {
   RegisterDTO,
   LoginDTO,
@@ -20,7 +21,7 @@ export class AuthController {
 
       res
         .status(201)
-        .json(new SuccessResponse("Registration successful", result, 201));
+        .json(new SuccessResponse(MESSAGES.AUTH_REGISTER_SUCCESS, result, 201));
     } catch (error) {
       next(error);
     }
@@ -31,7 +32,7 @@ export class AuthController {
       const data: LoginDTO = req.body;
       const result = await this.authService.login(data);
 
-      res.json(new SuccessResponse("Login successful", result));
+      res.json(new SuccessResponse(MESSAGES.AUTH_LOGIN_SUCCESS, result));
     } catch (error) {
       next(error);
     }
@@ -54,7 +55,7 @@ export class AuthController {
       const data: GoogleCodeLoginDTO = req.body;
       const result = await this.authService.loginWithGoogleCode(data);
 
-      res.json(new SuccessResponse("Login successful", result));
+      res.json(new SuccessResponse(MESSAGES.AUTH_GOOGLE_LOGIN_SUCCESS, result));
     } catch (error) {
       next(error);
     }
@@ -65,11 +66,11 @@ export class AuthController {
       const userId = req.user?.id;
 
       if (!userId) {
-        throw new AuthError("User not authenticated");
+        throw new AuthError(MESSAGES.AUTH_UNAUTHORIZED);
       }
 
       await this.authService.logout(userId);
-      res.json(new SuccessResponse("Logout successful"));
+      res.json(new SuccessResponse(MESSAGES.AUTH_LOGOUT_SUCCESS));
     } catch (error) {
       next(error);
     }
@@ -80,11 +81,11 @@ export class AuthController {
       const userId = req.user?.id;
 
       if (!userId) {
-        throw new AuthError("User not authenticated");
+        throw new AuthError(MESSAGES.AUTH_UNAUTHORIZED);
       }
 
       await this.authService.logout(userId);
-      res.json(new SuccessResponse("Logout successful"));
+      res.json(new SuccessResponse(MESSAGES.AUTH_LOGOUT_SUCCESS));
     } catch (error) {
       next(error);
     }
@@ -95,7 +96,7 @@ export class AuthController {
       const { refreshToken } = req.body;
       const result = await this.authService.refreshAccessToken(refreshToken);
 
-      res.json(new SuccessResponse("Token refreshed", result));
+      res.json(new SuccessResponse(MESSAGES.AUTH_TOKEN_REFRESHED, result));
     } catch (error) {
       next(error);
     }
@@ -106,7 +107,34 @@ export class AuthController {
       const data: GoogleAuthDTO = req.body;
       const result = await this.authService.googleAuth(data);
 
-      res.json(new SuccessResponse("Google login successful", result));
+      res.json(new SuccessResponse(MESSAGES.AUTH_GOOGLE_LOGIN_SUCCESS, result));
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async forgotPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      await this.authService.forgotPassword(req.body.email);
+      res.json({ success: true, message: "Check your email for the reset code" });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async verifyOtp(req: Request, res: Response, next: NextFunction) {
+    try {
+      await this.authService.verifyOtp(req.body);
+      res.json({ success: true, message: "OTP verified successfully" });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async resetPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      await this.authService.resetPassword(req.body);
+      res.json({ success: true, message: MESSAGES.AUTH_PASSWORD_RESET });
     } catch (error) {
       next(error);
     }

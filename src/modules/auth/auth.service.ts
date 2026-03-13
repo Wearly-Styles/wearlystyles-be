@@ -5,11 +5,14 @@ import { AuthError } from "@common/errors/auth-error"
 import { AppError } from "@common/errors/app-error"
 import { MESSAGES } from "@common/constants/messages.constant"
 import { ErrorCode } from "@common/enums/error-code.enum"
+import { UserStatus } from "@common/enums/user-status.enum"
 import type { RegisterDTO, LoginDTO, GoogleLoginDTO, GoogleCodeLoginDTO, GoogleAuthDTO } from "./auth.dto"
 import type { User } from "@prisma/client"
 import { googleClient } from "@config/google"
 import config from "@config/env"
 import logger from "@config/logger"
+import crypto from "crypto"
+import { emailService } from "@common/utils/email.util"
 
 export class AuthService {
   private userRepository = new UserRepository()
@@ -28,7 +31,7 @@ export class AuthService {
   private async verifyGoogleIdToken(idToken: string) {
     const clientId = config.google.clientId
     if (!clientId) {
-      throw new AppError("Google OAuth client id is missing", 500, ErrorCode.SERVICE_UNAVAILABLE)
+      throw new AppError(MESSAGES.SERVICE_UNAVAILABLE, 503, ErrorCode.SERVICE_UNAVAILABLE)
     }
 
     const url = `https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`
@@ -90,7 +93,7 @@ export class AuthService {
 
     await this.userRepository.update(user.id, { refreshToken })
 
-    const { password, ...userWithoutPassword } = user
+    const { password, refreshToken: _refreshToken, resetToken: _resetToken, resetTokenExpiresAt: _resetTokenExpiresAt, ...userWithoutPassword } = user
     return {
       user: userWithoutPassword,
       token,
@@ -109,6 +112,18 @@ export class AuthService {
       throw new AuthError(MESSAGES.AUTH_INVALID_CREDENTIALS)
     }
 
+    if (user.status && user.status !== UserStatus.ACTIVE) {
+      const message =
+        user.status === UserStatus.SUSPENDED
+          ? MESSAGES.AUTH_ACCOUNT_SUSPENDED
+          : user.status === UserStatus.INACTIVE
+            ? MESSAGES.AUTH_ACCOUNT_INACTIVE
+            : user.status === UserStatus.DELETED
+              ? MESSAGES.AUTH_ACCOUNT_DELETED
+              : MESSAGES.FORBIDDEN
+      throw new AppError(message, 403, ErrorCode.FORBIDDEN)
+    }
+
     const role = user.role ?? "user"
     const token = generateToken({ id: user.id, email: user.email, role })
     const refreshToken = generateRefreshToken({ id: user.id, email: user.email, role })
@@ -117,7 +132,7 @@ export class AuthService {
       refreshToken,
     })
 
-    const { password, ...userWithoutPassword } = user
+    const { password, refreshToken: _refreshToken, resetToken: _resetToken, resetTokenExpiresAt: _resetTokenExpiresAt, ...userWithoutPassword } = user
     return {
       user: userWithoutPassword,
       token,
@@ -132,6 +147,17 @@ export class AuthService {
     const email = payload.email!.toLowerCase()
 
     let user = await this.userRepository.findByEmail(email)
+    if (user?.status && user.status !== UserStatus.ACTIVE) {
+      const message =
+        user.status === UserStatus.SUSPENDED
+          ? MESSAGES.AUTH_ACCOUNT_SUSPENDED
+          : user.status === UserStatus.INACTIVE
+            ? MESSAGES.AUTH_ACCOUNT_INACTIVE
+            : user.status === UserStatus.DELETED
+              ? MESSAGES.AUTH_ACCOUNT_DELETED
+              : MESSAGES.FORBIDDEN
+      throw new AppError(message, 403, ErrorCode.FORBIDDEN)
+    }
     if (!user) {
       const tempPassword = await hashPassword(`google_${Date.now()}_${Math.random()}`)
       user = await this.userRepository.create({
@@ -141,11 +167,11 @@ export class AuthService {
         status: "active",
         profile: payload.name || payload.picture
           ? {
-              create: {
-                fullName: payload.name || undefined,
-                avatar: payload.picture || undefined,
-              },
-            }
+            create: {
+              fullName: payload.name || undefined,
+              avatar: payload.picture || undefined,
+            },
+          }
           : undefined,
       })
     }
@@ -156,7 +182,7 @@ export class AuthService {
 
     await this.userRepository.update(user.id, { refreshToken })
 
-    const { password, ...userWithoutPassword } = user
+    const { password, refreshToken: _refreshToken, resetToken: _resetToken, resetTokenExpiresAt: _resetTokenExpiresAt, ...userWithoutPassword } = user
     return {
       user: userWithoutPassword,
       token,
@@ -170,7 +196,7 @@ export class AuthService {
     const clientId = config.google.clientId
     const clientSecret = config.google.clientSecret
     if (!clientId || !clientSecret) {
-      throw new AppError("Google OAuth client credentials are missing", 500, ErrorCode.SERVICE_UNAVAILABLE)
+      throw new AppError(MESSAGES.SERVICE_UNAVAILABLE, 503, ErrorCode.SERVICE_UNAVAILABLE)
     }
 
     const body = new URLSearchParams({
@@ -222,6 +248,18 @@ export class AuthService {
       throw new AuthError(MESSAGES.AUTH_TOKEN_INVALID)
     }
 
+    if (user.status && user.status !== UserStatus.ACTIVE) {
+      const message =
+        user.status === UserStatus.SUSPENDED
+          ? MESSAGES.AUTH_ACCOUNT_SUSPENDED
+          : user.status === UserStatus.INACTIVE
+            ? MESSAGES.AUTH_ACCOUNT_INACTIVE
+            : user.status === UserStatus.DELETED
+              ? MESSAGES.AUTH_ACCOUNT_DELETED
+              : MESSAGES.FORBIDDEN
+      throw new AppError(message, 403, ErrorCode.FORBIDDEN)
+    }
+
     const role = payload.role ?? user.role ?? "user"
     const token = generateToken({ id: payload.id, email: payload.email, role })
     return { token }
@@ -243,6 +281,18 @@ export class AuthService {
 
       let user = await this.userRepository.findByEmail(payload.email);
 
+      if (user?.status && user.status !== UserStatus.ACTIVE) {
+        const message =
+          user.status === UserStatus.SUSPENDED
+            ? MESSAGES.AUTH_ACCOUNT_SUSPENDED
+            : user.status === UserStatus.INACTIVE
+              ? MESSAGES.AUTH_ACCOUNT_INACTIVE
+              : user.status === UserStatus.DELETED
+                ? MESSAGES.AUTH_ACCOUNT_DELETED
+                : MESSAGES.FORBIDDEN
+        throw new AppError(message, 403, ErrorCode.FORBIDDEN)
+      }
+
       if (!user) {
         user = await this.userRepository.create({
           email: payload.email,
@@ -263,15 +313,71 @@ export class AuthService {
 
       await this.userRepository.update(user.id, { refreshToken });
 
-      const { password, ...userWithoutPassword } = user;
+      const { password, refreshToken: _refreshToken, resetToken: _resetToken, resetTokenExpiresAt: _resetTokenExpiresAt, ...userWithoutPassword } = user;
       return {
         user: userWithoutPassword,
         token,
         refreshToken,
       };
     } catch (error) {
-      console.error("Google Auth Error Detail:", error); // Log chi tiết để debug
       throw new AuthError(MESSAGES.AUTH_GOOGLE_FAILED);
     }
+  }
+
+  async forgotPassword(email: string): Promise<void> {
+    const user = await this.userRepository.findByEmail(email.toLowerCase());
+    if (!user) {
+      throw new AppError(
+        MESSAGES.USER_NOT_FOUND,
+        404,
+        ErrorCode.NOT_FOUND
+      );
+    }
+
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = new Date(Date.now() + 3 * 60 * 1000);
+
+    await this.userRepository.update(user.id, {
+      resetCode: otpCode,
+      resetTokenExpiresAt: expires,
+    });
+
+    await emailService.sendResetOtpEmail(user.email, otpCode);
+  }
+
+  async verifyOtp(data: { email: string; otp: string }): Promise<void> {
+    const user = await this.userRepository.findByEmail(data.email.toLowerCase());
+
+    if (!user) {
+      throw new AppError(MESSAGES.USER_NOT_FOUND, 404, ErrorCode.NOT_FOUND);
+    }
+
+    if (!user.resetCode || user.resetCode != data.otp) {
+      throw new AppError("Invalid OTP code", 400, ErrorCode.VALIDATION_ERROR);
+    }
+
+    const currentTime = new Date();
+    if (!user.resetTokenExpiresAt || user.resetTokenExpiresAt < currentTime) {
+      throw new AppError("OTP code has expired", 400, ErrorCode.VALIDATION_ERROR);
+    }
+  }
+
+  async resetPassword(data: { email: string; newPassword: string }): Promise<void> {
+    const user = await this.userRepository.findByEmail(data.email);
+
+    if (!user) {
+      throw new AppError("Invalid or expired reset token", 400, ErrorCode.VALIDATION_ERROR);
+    }
+
+    const hashedPassword = await hashPassword(data.newPassword);
+
+    await this.userRepository.update(user.id, {
+      password: hashedPassword,
+      resetCode: null,
+      resetTokenExpiresAt: null,
+      refreshToken: null,
+    });
+
+    logger.info(`User ${user.id} has reset password successfully.`);
   }
 }
