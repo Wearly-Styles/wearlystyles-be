@@ -23,12 +23,12 @@ export class ProfileService {
       status: user.status,
       profile: user.profile
         ? {
-            fullName: user.profile.fullName,
-            avatar: user.profile.avatar,
-            bio: user.profile.preferences,
-            gender: user.profile.gender,
-            dateOfBirth: user.profile.birthday,
-            location: user.profile.location,
+            fullName: user.profile.fullName || undefined,
+            avatar: user.profile.avatar || undefined,
+            bio: user.profile.preferences || undefined,
+            gender: user.profile.gender || undefined,
+            dateOfBirth: user.profile.birthday || undefined,
+            location: user.profile.location || undefined,
           }
         : null,
     });
@@ -75,4 +75,36 @@ export class ProfileService {
 
     return profile;
   }
+
+  async likeOnPost (userId: number, postId: number) {
+    const like = await this.prisma.like.findUnique({
+      where: {
+        postId_userId: {
+          postId,
+          userId,
+        },
+      },
+    });
+
+    if (like) {
+      await this.prisma.like.delete({
+        where: {
+          postId_userId: {
+            postId,
+            userId,
+          },
+        },
+      });
+      return { message: "Post unliked" };
+    }
+
+    await this.prisma.like.create({
+      data: {
+        userId,
+        postId,
+      },
+    });
+    return { message: "Post liked" };
+  }
+
 }

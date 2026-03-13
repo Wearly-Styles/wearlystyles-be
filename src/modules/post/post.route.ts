@@ -20,8 +20,11 @@ const upload = multer({
     }
   },
 });
-router.get('/', postController.getAllPosts.bind(postController));
-
+router.get(
+  "/",
+  authMiddleware,
+  postController.getAllPosts.bind(postController)
+);
 router.get('/user', authMiddleware, postController.getPostsByUserId.bind(postController));
 
 router.post(
@@ -42,6 +45,18 @@ router.delete(
   "/:id",
   authMiddleware,
   postController.deletePost.bind(postController)
+);
+
+router.post(
+  "/:id/like",
+  authMiddleware,
+  postController.likePost.bind(postController)
+);
+
+router.post(
+  "/:id/comment",
+  authMiddleware,
+  postController.commentOnPost.bind(postController)
 );
 
 export default router;
