@@ -5,10 +5,21 @@ export interface RecommendationContextDTO {
   calendar?: NormalizedEvent[]
   closet: NormalizedClosetItem[]
   preferences?: string[]
+  planDate?: string
+  recentOutfits?: RecommendationPriorOutfit[]
   selectedEventType?: string
   selectedStyle?: string
   includeAlternatives?: boolean
   alternativesCount?: number
+}
+
+export interface RecommendationPriorOutfit {
+  source: "plan" | "history"
+  date: string
+  outfitId?: number
+  outfitName?: string
+  eventType?: string
+  itemIds: number[]
 }
 
 export interface OutfitRecommendation {

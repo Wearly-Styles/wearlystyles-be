@@ -4,6 +4,25 @@ import { ErrorCode } from "@common/enums/error-code.enum"
 import { MESSAGES } from "@common/constants/messages.constant"
 import type { OutfitPlanItemDTO, OutfitPlanQueryDTO, UpdateOutfitPlanDTO } from "./outfit-plan.dto"
 
+const outfitPlanInclude = {
+  outfit: {
+    include: {
+      items: {
+        include: {
+          clothingItem: {
+            include: {
+              category: true,
+              tags: {
+                include: { tag: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+} as const
+
 export class OutfitPlanService {
   async createPlans(userId: number, items: OutfitPlanItemDTO[]) {
     const outfitIds = Array.from(new Set(items.map((item) => item.outfitId)))
@@ -52,9 +71,7 @@ export class OutfitPlanService {
       orderBy: {
         planDate: "asc",
       },
-      include: {
-        outfit: true,
-      },
+      include: outfitPlanInclude,
     })
   }
 
@@ -92,9 +109,7 @@ export class OutfitPlanService {
         planType: data.planType,
         reminderSent: data.reminderSent,
       },
-      include: {
-        outfit: true,
-      },
+      include: outfitPlanInclude,
     })
   }
 

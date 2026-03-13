@@ -44,8 +44,15 @@ export const MESSAGES = {
 
   // Outfit
   OUTFIT_CREATED: "Outfit saved",
+  OUTFITS_RETRIEVED: "Outfits loaded",
+  OUTFIT_COUNT_RETRIEVED: "Outfit count loaded",
+  OUTFIT_RETRIEVED: "Outfit loaded",
+  OUTFIT_UPDATED: "Outfit updated",
+  OUTFIT_DELETED: "Approval cancelled",
   OUTFIT_ITEMS_REQUIRED: "Please choose at least one item",
   OUTFIT_ITEMS_INVALID: "Some selected items are invalid",
+  OUTFIT_ID_INVALID: "Invalid outfit id",
+  OUTFIT_IN_USE: "This outfit is already used in your schedule or history",
 
   // Outfit plan
   OUTFIT_PLANS_CREATED: "Outfit scheduled",
@@ -55,6 +62,8 @@ export const MESSAGES = {
   OUTFIT_PLAN_ID_INVALID: "Invalid plan id",
   OUTFIT_PLAN_NOT_FOUND: "Scheduled outfit not found",
   OUTFIT_NOT_FOUND_OR_FORBIDDEN: "Outfit not found",
+  OUTFIT_HISTORY_CREATED: "Outfit marked as worn today",
+  OUTFIT_HISTORIES_RETRIEVED: "Outfit history loaded",
 
   // Recommendation
   RECOMMENDATION_GENERATED: "Outfit recommendations ready",
