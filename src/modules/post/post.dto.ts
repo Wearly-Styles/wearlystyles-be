@@ -40,22 +40,38 @@ export const AllPostDTO = z.object({
 
 export const UserPostDTO = z.object({
   id: z.number().int().positive(),
-  name: z.string(),
+
   userId: z.number().int().positive(),
+
+  user: z.object({
+    id: z.number(),
+    name: z.string(),
+    avatar: z.string().nullable().optional(),
+  }),
+
   image: z.string().url().nullable().optional(),
-  // keep status consistent with output DTOs
+
   status: z.string().nullable().optional(),
   caption: z.string().nullable().optional(),
+
   createdAt: z.date().nullable().optional(),
   updatedAt: z.date().nullable().optional(),
+
   likes: z.number().int().nonnegative(),
+  liked: z.boolean(),
+
   comments: z.array(
     z.object({
       id: z.number().int().positive(),
-      // content may be null in DB
       content: z.string().nullable().optional(),
       createdAt: z.date().nullable().optional(),
       updatedAt: z.date().nullable().optional(),
+
+      user: z.object({
+        id: z.number(),
+        name: z.string(),
+        avatar: z.string().nullable().optional(),
+      }),
     }),
   ),
 });
