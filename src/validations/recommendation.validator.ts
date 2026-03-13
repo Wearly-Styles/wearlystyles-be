@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+const isValidDate = (value: string) => !Number.isNaN(new Date(value).getTime())
+
 const normalizedWeatherSchema = z
   .object({
     tempC: z.number().nullable().optional(),
@@ -56,12 +58,27 @@ const calendarQuerySchema = z.object({
   maxResults: z.coerce.number().int().min(1).max(250).optional(),
 })
 
+const recommendationPriorOutfitSchema = z.object({
+  source: z.enum(["plan", "history"]),
+  date: z.string().refine(isValidDate, {
+    message: "recentOutfit.date must be a valid ISO date string",
+  }),
+  outfitId: z.coerce.number().int().positive().optional(),
+  outfitName: z.string().optional(),
+  eventType: z.string().optional(),
+  itemIds: z.array(z.coerce.number().int().positive()).min(1, "recentOutfit.itemIds is required"),
+})
+
 export const recommendationByContextSchema = z.object({
   body: z.object({
     weather: normalizedWeatherSchema.optional(),
     calendar: z.array(normalizedEventSchema).optional(),
     closet: z.array(normalizedClosetItemSchema).min(1).optional(),
     preferences: z.array(z.string()).optional(),
+    planDate: z.string().optional().refine((value) => (value ? isValidDate(value) : true), {
+      message: "planDate must be a valid ISO date string",
+    }),
+    recentOutfits: z.array(recommendationPriorOutfitSchema).optional(),
     includeAlternatives: z.boolean().optional(),
     alternativesCount: z.coerce.number().int().min(1).max(3).optional(),
     weatherQuery: weatherQuerySchema.optional(),
@@ -75,6 +92,10 @@ export const recommendationBySelectionSchema = z.object({
     selectedStyle: z.string().min(1, "selectedStyle is required"),
     closet: z.array(normalizedClosetItemSchema).min(1).optional(),
     preferences: z.array(z.string()).optional(),
+    planDate: z.string().optional().refine((value) => (value ? isValidDate(value) : true), {
+      message: "planDate must be a valid ISO date string",
+    }),
+    recentOutfits: z.array(recommendationPriorOutfitSchema).optional(),
     includeAlternatives: z.boolean().optional(),
     alternativesCount: z.coerce.number().int().min(1).max(3).optional(),
     weather: normalizedWeatherSchema.optional(),

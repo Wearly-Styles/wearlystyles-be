@@ -89,6 +89,7 @@ export class RecommendationService {
   private static readonly MAX_CALENDAR_ITEMS = 5
   private static readonly MAX_TAGS_PER_ITEM = 6
   private static readonly MAX_PREFERENCES = 8
+  private static readonly MAX_RECENT_OUTFITS = 12
   private static readonly CHUNK_SIZE = 120
   private static readonly RETRY_LIMIT = 3
   private static readonly RETRY_BASE_MS = 700
@@ -224,6 +225,18 @@ export class RecommendationService {
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase()
       .replace(/\u0111/g, "d")
+  }
+
+  private isValidDate(value?: string | null): value is string {
+    return typeof value === "string" && value.length > 0 && !Number.isNaN(new Date(value).getTime())
+  }
+
+  private normalizeDate(value?: string | null): string | undefined {
+    if (!this.isValidDate(value)) {
+      return undefined
+    }
+
+    return new Date(value).toISOString()
   }
 
   private buildItemText(item: RecommendationContextDTO["closet"][number]): string {
@@ -554,6 +567,134 @@ export class RecommendationService {
     return ids.map((id) => closetById.get(id)).filter((item): item is RecommendationContextDTO["closet"][number] => Boolean(item))
   }
 
+  private buildOutfitSignature(ids: number[]): string {
+    return Array.from(
+      new Set(
+        ids
+          .map((id) => Number(id))
+          .filter((id) => Number.isFinite(id)),
+      ),
+    )
+      .sort((a, b) => a - b)
+      .join(",")
+  }
+
+  private buildBlockedOutfitSignatures(
+    recentOutfits?: RecommendationContextDTO["recentOutfits"],
+  ): Set<string> {
+    const blocked = new Set<string>()
+    for (const outfit of recentOutfits || []) {
+      const signature = this.buildOutfitSignature(outfit.itemIds || [])
+      if (signature) {
+        blocked.add(signature)
+      }
+    }
+    return blocked
+  }
+
+  private rankClosetItems(
+    closet: RecommendationContextDTO["closet"],
+    context: RecommendationContextDTO,
+  ) {
+    return closet
+      .map((item, index) => ({ item, index, score: this.scoreClosetItem(item, context) }))
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score
+        return a.index - b.index
+      })
+  }
+
+  private buildNonDuplicateOutfitItems(
+    ids: number[],
+    blockedSignatures: Set<string>,
+    closet: RecommendationContextDTO["closet"],
+    context: RecommendationContextDTO,
+  ): number[] {
+    const normalized = this.ensureOutfitItemIds(ids, closet, context)
+    const normalizedSignature = this.buildOutfitSignature(normalized)
+    if (!normalizedSignature || !blockedSignatures.has(normalizedSignature)) {
+      return normalized
+    }
+
+    const rankedItems = this.rankClosetItems(closet, context)
+    const seenSignatures = new Set<string>(normalizedSignature ? [normalizedSignature] : [])
+    const targetSize = Math.max(
+      RecommendationService.MIN_OUTFIT_ITEMS,
+      Math.min(RecommendationService.MAX_OUTFIT_ITEMS, normalized.length || RecommendationService.MIN_OUTFIT_ITEMS),
+    )
+
+    const trySeed = (seedIds: number[]) => {
+      const candidate = this.ensureOutfitItemIds(seedIds, closet, context)
+      const signature = this.buildOutfitSignature(candidate)
+      if (!signature || blockedSignatures.has(signature) || seenSignatures.has(signature)) {
+        return null
+      }
+
+      seenSignatures.add(signature)
+      return candidate
+    }
+
+    for (let removeIndex = 0; removeIndex < normalized.length; removeIndex += 1) {
+      const seedBase = normalized.filter((_, index) => index !== removeIndex)
+      for (const candidate of rankedItems) {
+        if (seedBase.includes(candidate.item.id)) {
+          continue
+        }
+
+        const variant = trySeed([...seedBase, candidate.item.id])
+        if (variant) {
+          return variant
+        }
+      }
+    }
+
+    const rankedIds = rankedItems.map((entry) => entry.item.id)
+    for (let start = 0; start < rankedIds.length; start += 1) {
+      const seed = rankedIds.slice(start, start + targetSize)
+      if (seed.length < RecommendationService.MIN_OUTFIT_ITEMS) {
+        break
+      }
+
+      const variant = trySeed(seed)
+      if (variant) {
+        return variant
+      }
+    }
+
+    return normalized
+  }
+
+  private uniquifyRecommendation(
+    recommendation: OutfitRecommendation,
+    blockedSignatures: Set<string>,
+    closet: RecommendationContextDTO["closet"],
+    context: RecommendationContextDTO,
+  ): OutfitRecommendation {
+    const originalSignature = this.buildOutfitSignature(recommendation.items)
+    const uniqueItems = this.buildNonDuplicateOutfitItems(recommendation.items, blockedSignatures, closet, context)
+    const uniqueSignature = this.buildOutfitSignature(uniqueItems)
+    if (uniqueSignature) {
+      blockedSignatures.add(uniqueSignature)
+    }
+
+    const changed = Boolean(uniqueSignature) && uniqueSignature !== originalSignature
+    const notes = changed
+      ? Array.from(
+          new Set([...(recommendation.notes || []), "Adjusted to avoid repeating a recent or planned outfit."]),
+        ).slice(0, 2)
+      : recommendation.notes
+
+    return {
+      ...recommendation,
+      outfit: {
+        name: this.buildOutfitName(recommendation.eventType, recommendation.style),
+        items: this.buildOutfitItems(uniqueItems, closet),
+      },
+      items: uniqueItems,
+      notes,
+    }
+  }
+
   private compactCloset(items: RecommendationContextDTO["closet"]) {
     return items.map((item) => ({
       id: item.id,
@@ -648,6 +789,33 @@ export class RecommendationService {
           timeOfDay: event.timeOfDay || getTimeOfDay(event.start),
         }
       }) || []
+    const normalizedPlanDate = this.normalizeDate(context.planDate || normalizedCalendar[0]?.start)
+    const normalizedRecentOutfits =
+      (context.recentOutfits || [])
+        .map((outfit) => {
+          const normalizedDate = this.normalizeDate(outfit.date)
+          const itemIds = Array.from(
+            new Set(
+              (outfit.itemIds || [])
+                .map((itemId) => Number(itemId))
+                .filter((itemId) => Number.isFinite(itemId)),
+            ),
+          ).slice(0, RecommendationService.MAX_OUTFIT_ITEMS)
+
+          if (!normalizedDate || itemIds.length === 0) {
+            return null
+          }
+
+          return {
+            ...outfit,
+            date: normalizedDate,
+            itemIds,
+          }
+        })
+        .filter(
+          (outfit): outfit is NonNullable<RecommendationContextDTO["recentOutfits"]>[number] => Boolean(outfit),
+        )
+        .slice(0, RecommendationService.MAX_RECENT_OUTFITS)
 
     return {
       ...context,
@@ -669,6 +837,8 @@ export class RecommendationService {
         .map((value) => value.trim())
         .filter((value) => value.length > 0)
         .slice(0, RecommendationService.MAX_PREFERENCES),
+      planDate: normalizedPlanDate,
+      recentOutfits: normalizedRecentOutfits,
       selectedEventType: context.selectedEventType || normalizedCalendar[0]?.eventType || "casual_social",
       selectedStyle: context.selectedStyle || "smart_casual",
       includeAlternatives: Boolean(context.includeAlternatives),
@@ -770,9 +940,15 @@ export class RecommendationService {
     const includeAlternatives = Boolean(workingContext.includeAlternatives)
     const alternativesCount = workingContext.alternativesCount ?? 0
     const minimizeCalls = RecommendationService.MINIMIZE_CALLS && !includeAlternatives
+    const blockedOutfitSignatures = this.buildBlockedOutfitSignatures(workingContext.recentOutfits)
 
     const buildFallbackResponse = (reason: string): RecommendationResponse => {
-      const items = this.enforceCategoryLimits(fallbackItems, fullCloset, workingContext)
+      const items = this.buildNonDuplicateOutfitItems(
+        this.enforceCategoryLimits(fallbackItems, fullCloset, workingContext),
+        new Set(blockedOutfitSignatures),
+        fullCloset,
+        workingContext,
+      )
       const primary: OutfitRecommendation = normalize({
         eventTitle: "general",
         eventType: workingContext.selectedEventType,
@@ -794,7 +970,12 @@ export class RecommendationService {
     if (!apiKey) {
       logger.error("Recommendation fallback: Gemini API key is missing")
 
-      const items = this.enforceCategoryLimits(fallbackItems, fullCloset, workingContext)
+      const items = this.buildNonDuplicateOutfitItems(
+        this.enforceCategoryLimits(fallbackItems, fullCloset, workingContext),
+        new Set(blockedOutfitSignatures),
+        fullCloset,
+        workingContext,
+      )
       const eventType = workingContext.selectedEventType
       const style = workingContext.selectedStyle
       const primary: OutfitRecommendation = {
@@ -828,6 +1009,8 @@ export class RecommendationService {
       "Do not pick two items with the same categoryId within one outfit.",
       "Outfit must match the chosen style and event, and colors should be harmonious.",
       "Do NOT propose items that do not exist.",
+      "Use context.planDate when present as the target day for the recommendation.",
+      "Avoid reusing any exact item combination listed in context.recentOutfits.",
       "If the closet lacks key pieces, add up to 6 missingItems inside each outfit (name, category, reason).",
       "Return ONLY minified JSON with no markdown or extra text.",
       "Never include any prefix/suffix text.",
@@ -1166,12 +1349,14 @@ export class RecommendationService {
          "Do not pick two items with the same categoryId within one outfit.",
          "Outfits must match the event and colors should be harmonious.",
          "Do NOT propose items that do not exist.",
+         "Avoid reusing any exact item combination listed in context.recentOutfits.",
          "If the closet lacks key pieces, add up to 6 missingItems inside each outfit (name, category, reason).",
          "Return ONLY minified JSON with no markdown or extra text.",
          "Never include any prefix/suffix text.",
         "Return exactly one recommendation per calendar event, in the same order as provided.",
         "Include eventId and eventTitle for each recommendation if available.",
         "Use event.eventType and event.dressCode when present; otherwise use context.selectedEventType/style.",
+        "Recommendations for different calendar events must not reuse the exact same item combination.",
         "Keep notes concise (max 2 short sentences).",
       ].join(" ")
  
@@ -1265,7 +1450,20 @@ export class RecommendationService {
           return rec
         })
 
-        const primary = perEventRecommendations[0] || normalize({
+        const usedOutfitSignatures = new Set(blockedOutfitSignatures)
+        const uniquePerEventRecommendations = perEventRecommendations.map((recommendation, index) => {
+          const event = calendarEvents[index]
+          const eventContext: RecommendationContextDTO = {
+            ...workingContext,
+            planDate: this.normalizeDate(event?.start || event?.end) || workingContext.planDate,
+            selectedEventType: recommendation.eventType || event?.eventType || workingContext.selectedEventType,
+            selectedStyle: recommendation.style || event?.dressCode || workingContext.selectedStyle,
+          }
+
+          return this.uniquifyRecommendation(recommendation, usedOutfitSignatures, fullCloset, eventContext)
+        })
+
+        const primary = uniquePerEventRecommendations[0] || normalize({
         eventTitle: "general",
         eventType: workingContext.selectedEventType,
         style: workingContext.selectedStyle,
@@ -1276,7 +1474,7 @@ export class RecommendationService {
         const result = {
           primary,
           alternatives: [],
-          recommendations: perEventRecommendations,
+          recommendations: uniquePerEventRecommendations,
           model,
         }
 
@@ -1342,6 +1540,17 @@ export class RecommendationService {
             notes: ["Generated with fallback selection."],
           })
         }
+
+        primary = this.uniquifyRecommendation(
+          primary,
+          new Set(blockedOutfitSignatures),
+          fullCloset,
+          {
+            ...workingContext,
+            selectedEventType: primary.eventType || workingContext.selectedEventType,
+            selectedStyle: primary.style || workingContext.selectedStyle,
+          },
+        )
 
         const result = {
           primary,
@@ -1595,27 +1804,49 @@ export class RecommendationService {
       })
     }
 
+    const usedOutfitSignatures = new Set(blockedOutfitSignatures)
+    primary = this.uniquifyRecommendation(
+      primary,
+      usedOutfitSignatures,
+      fullCloset,
+      {
+        ...workingContext,
+        selectedEventType: primary.eventType || workingContext.selectedEventType,
+        selectedStyle: primary.style || workingContext.selectedStyle,
+      },
+    )
+
     const rawAlternatives = includeAlternatives
       ? parsed.alternatives?.map((rec) => normalize(rec)) ||
         parsed.recommendations?.slice(1).map((rec) => normalize(rec)) ||
         []
       : []
 
-    const itemsKey = (ids: number[]) => ids.slice().sort((a, b) => a - b).join(",")
     const desiredAlternatives = Math.max(1, alternativesCount || RecommendationService.MAX_ALTERNATIVES)
 
     const alternatives = (() => {
       if (!includeAlternatives) return []
-      const primaryKey = itemsKey(primary.items)
+      const primaryKey = this.buildOutfitSignature(primary.items)
       const seen = new Set<string>([primaryKey])
       const unique: OutfitRecommendation[] = []
 
       for (const alt of rawAlternatives) {
         if (!alt.items.length) continue
-        const key = itemsKey(alt.items)
+        const adjustedAlt = this.uniquifyRecommendation(
+          alt,
+          usedOutfitSignatures,
+          fullCloset,
+          {
+            ...workingContext,
+            selectedEventType: alt.eventType || workingContext.selectedEventType,
+            selectedStyle: alt.style || workingContext.selectedStyle,
+          },
+        )
+        const key = this.buildOutfitSignature(adjustedAlt.items)
+        if (!key) continue
         if (seen.has(key)) continue
         seen.add(key)
-        unique.push(alt)
+        unique.push(adjustedAlt)
         if (unique.length >= desiredAlternatives) break
       }
 

@@ -38,17 +38,6 @@ export class AuthController {
     }
   }
 
-  // async loginWithGoogle(req: Request, res: Response, next: NextFunction) {
-  //   try {
-  //     const data: GoogleLoginDTO = req.body;
-  //     const result = await this.authService.loginWithGoogle(data);
-
-  //     res.json(new SuccessResponse("Login successful", result));
-  //   } catch (error) {
-  //     next(error);
-  //   }
-  // }
-
   async loginWithGoogleCode(req: Request, res: Response, next: NextFunction) {
     try {
       console.log("[Auth] login/google-code hit");
@@ -63,14 +52,10 @@ export class AuthController {
 
   async loginWithGoogle(req: Request, res: Response, next: NextFunction) {
     try {
-      const userId = req.user?.id;
+      const data: GoogleLoginDTO = req.body;
+      const result = await this.authService.loginWithGoogle(data);
 
-      if (!userId) {
-        throw new AuthError(MESSAGES.AUTH_UNAUTHORIZED);
-      }
-
-      await this.authService.logout(userId);
-      res.json(new SuccessResponse(MESSAGES.AUTH_LOGOUT_SUCCESS));
+      res.json(new SuccessResponse(MESSAGES.AUTH_GOOGLE_LOGIN_SUCCESS, result));
     } catch (error) {
       next(error);
     }

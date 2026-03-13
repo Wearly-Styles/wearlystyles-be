@@ -6,6 +6,7 @@ import contextRoutes from "@modules/context/context.route";
 import recommendationRoutes from "@modules/recommendation/recommendation.route";
 import outfitPlanRoutes from "@modules/outfit-plan/outfit-plan.route";
 import outfitRoutes from "@modules/outfit/outfit.route";
+import outfitHistoryRoutes from "@modules/outfit-history/outfit-history.route";
 import profileRoutes from "@modules/profile/profile.route";
 
 const router = Router();
@@ -18,5 +19,6 @@ router.use("/context", contextRoutes);
 router.use("/recommendations", recommendationRoutes);
 router.use("/outfit-plans", outfitPlanRoutes);
 router.use("/outfits", outfitRoutes);
+router.use("/outfit-histories", outfitHistoryRoutes);
 router.use("/profile", profileRoutes);
 export default router;
