@@ -7,6 +7,7 @@ import { CloudinaryService } from "@common/utils/cloudinary.util";
 import { AppError } from "@common/errors/app-error";
 import { MESSAGES } from "@common/constants/messages.constant";
 import { ErrorCode } from "@common/enums/error-code.enum";
+import { SuccessResponse } from "@common/responses/success.response";
 
 export class ClothingService {
   private prisma = new PrismaClient();
@@ -208,5 +209,38 @@ export class ClothingService {
     ]);
 
     return { id: itemId };
+  }
+
+  async deleteCategory(userId: number, categoryId: number) {
+    const existing = await this.prisma.category.findFirst({
+      where: {
+        id: categoryId,
+        userId: userId,
+      },
+    });
+
+    if (!existing) {
+      throw new AppError("Category not found or access denied", 404, ErrorCode.NOT_FOUND);
+    }
+
+    return await this.prisma.$transaction(async (tx) => {
+      await tx.clothingItem.updateMany({
+        where: {
+          categoryId: categoryId,
+          userId: userId,
+        },
+        data: {
+          categoryId: null,
+        },
+      });
+
+      const deletedCategory = await tx.category.delete({
+        where: {
+          id: categoryId,
+        },
+      });
+
+      return deletedCategory;
+    });
   }
 }
