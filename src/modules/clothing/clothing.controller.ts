@@ -219,4 +219,27 @@ export class ClothingController {
       next(error);
     }
   }
+
+  async deleteCategory(req: Request, res: Response, next: NextFunction) {
+    try {
+      const user = req.user as RequestUser;
+      const categoryId = Number(req.params.id);
+
+      if (!Number.isFinite(categoryId)) {
+        throw new AppError("Invalid category id", 400, ErrorCode.BAD_REQUEST);
+      }
+
+      const result = await this.clothingService.deleteCategory(user.id, categoryId);
+
+      res.status(200).json(
+        new SuccessResponse(
+          "Category deleted successfully. Associated items are now uncategorized.",
+          result,
+          200
+        )
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
 }

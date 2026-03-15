@@ -71,4 +71,9 @@ router.delete(
   clothingController.deleteClothingItem.bind(clothingController),
 );
 
+router.delete(
+  "/categories/:id",
+  authMiddleware,
+  clothingController.deleteCategory.bind(clothingController),
+);
 export default router;
