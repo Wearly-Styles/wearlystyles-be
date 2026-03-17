@@ -16,37 +16,31 @@ export class PostController {
   private postService = new PostService();
 
   async getAllPosts(req: Request, res: Response) {
-  try {
-    console.log("GET /posts called");
+    try {
+      console.log("GET /posts called");
 
-    const user = req.user;
+      const user = req.user;
 
-    if (!user) {
-      throw new AppError("Unauthorized", 401, ErrorCode.UNAUTHORIZED);
+      if (!user) {
+        throw new AppError("Unauthorized", 401, ErrorCode.UNAUTHORIZED);
+      }
+
+      const posts = await this.postService.getAllPosts(user.id);
+
+      res
+        .status(200)
+        .json(new SuccessResponse("Posts retrieved successfully", posts, 200));
+    } catch (error) {
+      console.error("ERROR getAllPosts:", error);
+
+      if (error instanceof AppError) {
+        res.status(error.statusCode).json({ message: error.message });
+        return;
+      }
+
+      res.status(500).json({ message: "Internal server error" });
     }
-
-    const posts = await this.postService.getAllPosts(user.id);
-
-    res
-      .status(200)
-      .json(
-        new SuccessResponse(
-          "Posts retrieved successfully",
-          posts,
-          200
-        )
-      );
-  } catch (error) {
-    console.error("ERROR getAllPosts:", error);
-
-    if (error instanceof AppError) {
-      res.status(error.statusCode).json({ message: error.message });
-      return;
-    }
-
-    res.status(500).json({ message: "Internal server error" });
   }
-}
 
   async getPostsByUserId(req: Request, res: Response) {
     try {
@@ -171,11 +165,15 @@ export class PostController {
       console.error("deletePost error:", error);
 
       if (error instanceof AppError) {
-        res.status(error.statusCode).json({ message: error.message });
+        res
+          .status(error.statusCode)
+          .json({ message: error.message, statusCode: error.statusCode });
         return;
       }
 
-      res.status(500).json({ message: "Internal server error" });
+      res
+        .status(500)
+        .json({ message: "Internal server error", statusCode: 500 });
     }
   }
 
@@ -213,39 +211,39 @@ export class PostController {
   }
 
   async commentOnPost(req: Request, res: Response) {
-  try {
-    const user = req.user;
+    try {
+      const user = req.user;
 
-    if (!user) {
-      throw new AppError("Unauthorized", 401, ErrorCode.UNAUTHORIZED);
+      if (!user) {
+        throw new AppError("Unauthorized", 401, ErrorCode.UNAUTHORIZED);
+      }
+
+      const postId = Number(req.params.id);
+
+      if (Number.isNaN(postId)) {
+        throw new AppError("Invalid post ID", 400, ErrorCode.BAD_REQUEST);
+      }
+
+      const body = CommentOnPostDTO.parse(req.body);
+
+      const result = await this.postService.commentOnPost(
+        postId,
+        user.id,
+        body.content,
+      );
+
+      res
+        .status(201)
+        .json(new SuccessResponse("Comment added successfully", result, 201));
+    } catch (error) {
+      console.error("commentOnPost error:", error);
+
+      if (error instanceof AppError) {
+        res.status(error.statusCode).json({ message: error.message });
+        return;
+      }
+
+      res.status(500).json({ message: "Internal server error" });
     }
-
-    const postId = Number(req.params.id); 
-
-    if (Number.isNaN(postId)) {
-      throw new AppError("Invalid post ID", 400, ErrorCode.BAD_REQUEST);
-    }
-
-    const body = CommentOnPostDTO.parse(req.body);
-
-    const result = await this.postService.commentOnPost(
-      postId,
-      user.id,
-      body.content
-    );
-
-    res
-      .status(201)
-      .json(new SuccessResponse("Comment added successfully", result, 201));
-  } catch (error) {
-    console.error("commentOnPost error:", error);
-
-    if (error instanceof AppError) {
-      res.status(error.statusCode).json({ message: error.message });
-      return;
-    }
-
-    res.status(500).json({ message: "Internal server error" });
   }
-}
 }
