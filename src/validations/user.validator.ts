@@ -4,7 +4,7 @@ import { UserStatus } from "@common/enums/user-status.enum"
 
 export const createUserSchema = z.object({
   body: z.object({
-    email: z.string().refine(isValidEmail, "Invalid email format"),
+    email: z.string().refine(isValidEmail, "Email must be a valid gmail.com address"),
     fullName: z.string().optional(),
     avatar: z.string().optional(),
     password: z.string().min(6, "Password must be at least 6 characters"),
