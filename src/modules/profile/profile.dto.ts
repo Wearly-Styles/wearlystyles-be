@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidEmail } from "@validations/email.validator";
 
 export const ProfileInfoDTO = z.object({
   fullName: z.string().optional(),
@@ -18,7 +19,10 @@ export const ProfileDTO = z.object({
 });
 
 export const UpdateProfileDTO = z.object({
-  email: z.string().email().optional(),
+  email: z.string().email().optional().refine(
+    (val) => val === undefined || isValidEmail(val),
+    "Email must be a valid gmail.com address",
+  ),
   fullName: z.string().optional(),
   preferences: z.string().optional(),
   gender: z.string().optional(),

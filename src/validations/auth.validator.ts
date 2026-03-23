@@ -11,7 +11,7 @@ export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
 
 export const registerSchema = z.object({
   body: z.object({
-    email: z.string().refine(isValidEmail, "Invalid email format"),
+    email: z.string().refine(isValidEmail, "Email must be a valid gmail.com address"),
     password: z.string()
       .min(6, "Password must be 6 characters or more")
       .refine((val) => /[A-Z]/.test(val), "At least one uppercase letter")
